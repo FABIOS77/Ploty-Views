@@ -25,6 +25,8 @@ export interface UserProfile extends UserStats {
   avatarUrl?: string | null;
   equippedMedal?: GamificationCosmetic | null;
   equippedTheme?: GamificationCosmetic | null;
+  equippedFrame?: GamificationCosmetic | null;
+  equippedTitle?: GamificationCosmetic | null;
   xpForNextLevel?: number;
   xpCurrentLevel?: number;
   progressPercent?: number;
@@ -126,6 +128,8 @@ export const authSlice = createSlice({
         currentStreak?: number;
         equippedMedal?: GamificationCosmetic | null;
         equippedTheme?: GamificationCosmetic | null;
+        equippedFrame?: GamificationCosmetic | null;
+        equippedTitle?: GamificationCosmetic | null;
       }>,
     ) => {
       if (state.user) {

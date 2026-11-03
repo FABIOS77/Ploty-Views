@@ -1,53 +1,65 @@
-import { createSlice, createAsyncThunk } from '@reduxjs/toolkit';
+import { createSlice, createAsyncThunk, type PayloadAction } from '@reduxjs/toolkit';
 import api from '../../services/api';
+import type {
+  RawDailyTrendPoint,
+  ActionProgressItem,
+  ProjectProgressItem,
+  OverviewStats,
+  RecurrenceVsSingleStats,
+} from '../../common/fp/chart-transformers.fp';
 
-export interface DashboardReport {
-  summary: {
-    totalActivities: number;
-    completed: number;
-    pending: number;
-    inProgress: number;
-    overdue: number;
-    completionRate: number;
-  };
-  statusDistribution?: Record<string, number>;
-  priorityBreakdown?: Record<string, number>;
-  dailyTrends?: Array<{
-    date: string;
-    completedCount: number;
-    createdCount: number;
-  }>;
-  topPerformers?: Array<{
-    userId: string;
-    username: string;
-    avatarUrl?: string | null;
-    completedCount: number;
-    totalXp: number;
-  }>;
+export interface TeamMemberContribution {
+  userId: string;
+  username: string;
+  email: string;
+  avatarUrl?: string | null;
+  role: string;
+  completedCount: number;
+  xpContributed: number;
+  percentageOfTeam: number;
 }
 
-export interface ProjectReport {
-  projectId: string;
-  projectName: string;
-  summary: {
-    total: number;
-    completed: number;
-    pending: number;
-    inProgress: number;
-    completionRate: number;
+export interface DashboardReportData {
+  overview: OverviewStats & {
+    currentStreak: number;
+    longestStreak: number;
+    xp: number;
+    level: number;
+    coins: number;
+    gamificationStats?: any;
   };
-  memberContributions?: Array<{
-    userId: string;
-    username: string;
-    role: string;
-    completedActivities: number;
-    xpEarned: number;
-  }>;
+  statusDistribution: Record<string, number>;
+  priorityBreakdown: Record<string, { total: number; completed: number }>;
+  dailyTrend: RawDailyTrendPoint[];
+  recurrenceVsSingle: RecurrenceVsSingleStats;
+  projectsProgress: ProjectProgressItem[];
+  actionProgressList: ActionProgressItem[];
+}
+
+export interface ProjectReportData {
+  project: {
+    id: string;
+    name: string;
+    description?: string | null;
+    colorHex: string;
+    icon: string;
+    isTeamProject?: boolean;
+    memberCount: number;
+    totalActivities: number;
+    progressPercent: number;
+  };
+  statusDistribution: Record<string, number>;
+  priorityBreakdown: Record<string, { total: number; completed: number }>;
+  dailyTrend: RawDailyTrendPoint[];
+  actionProgress: ActionProgressItem[];
+  teamContributions: TeamMemberContribution[];
 }
 
 export interface ReportsState {
-  dashboard: DashboardReport | null;
-  projectReport: ProjectReport | null;
+  dashboard: DashboardReportData | null;
+  projectReport: ProjectReportData | null;
+  selectedDaysRange: number;
+  selectedProjectId: string | null;
   loading: boolean;
   error: string | null;
 }
@@ -55,6 +67,8 @@ export interface ReportsState {
 const initialState: ReportsState = {
   dashboard: null,
   projectReport: null,
+  selectedDaysRange: 14,
+  selectedProjectId: null,
   loading: false,
   error: null,
 };
@@ -91,9 +105,16 @@ export const reportsSlice = createSlice({
   name: 'reports',
   initialState,
   reducers: {
+    setDaysRange: (state, action: PayloadAction<number>) => {
+      state.selectedDaysRange = action.payload;
+    },
+    setSelectedProjectId: (state, action: PayloadAction<string | null>) => {
+      state.selectedProjectId = action.payload;
+    },
     clearReports: (state) => {
       state.dashboard = null;
       state.projectReport = null;
+      state.selectedProjectId = null;
     },
   },
   extraReducers: (builder) => {
@@ -112,11 +133,21 @@ export const reportsSlice = createSlice({
     });
 
     // fetchProjectReport
+    builder.addCase(fetchProjectReport.pending, (state) => {
+      state.loading = true;
+      state.error = null;
+    });
     builder.addCase(fetchProjectReport.fulfilled, (state, action) => {
+      state.loading = false;
       state.projectReport = action.payload;
+    });
+    builder.addCase(fetchProjectReport.rejected, (state, action) => {
+      state.loading = false;
+      state.error = action.payload as string;
     });
   },
 });
 
-export const { clearReports } = reportsSlice.actions;
+export const { setDaysRange, setSelectedProjectId, clearReports } =
+  reportsSlice.actions;
 export default reportsSlice.reducer;

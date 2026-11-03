@@ -3,7 +3,10 @@ import gamificationReducer, {
   queueRewardNotification,
   dismissRewardNotification,
   clearAllRewardNotifications,
+  setPreviewTheme,
+  clearPreviewTheme,
   type GamificationState,
+  type CatalogItem,
 } from './gamificationSlice';
 
 describe('Gamification Redux Slice (gamificationSlice.ts)', () => {
@@ -12,6 +15,9 @@ describe('Gamification Redux Slice (gamificationSlice.ts)', () => {
     leaderboard: [],
     equippedTheme: null,
     equippedMedal: null,
+    equippedFrame: null,
+    equippedTitle: null,
+    previewTheme: null,
     rewardQueue: [],
     loading: false,
     actionLoading: false,
@@ -69,5 +75,26 @@ describe('Gamification Redux Slice (gamificationSlice.ts)', () => {
 
     const state = gamificationReducer(stateWithItems, clearAllRewardNotifications());
     expect(state.rewardQueue.length).toBe(0);
+  });
+
+  it('sets and clears a theme live preview', () => {
+    const dummyTheme: CatalogItem = {
+      id: 'thm-1',
+      code: 'THEME_CYBERPUNK_NEON',
+      name: 'Cyberpunk Neon',
+      description: 'Neon theme',
+      type: 'THEME',
+      unlockLevel: 2,
+      costCoins: 100,
+      isUnlocked: true,
+      isEquipped: false,
+      canAfford: true,
+    };
+
+    const previewState = gamificationReducer(initialTestState, setPreviewTheme(dummyTheme));
+    expect(previewState.previewTheme?.code).toBe('THEME_CYBERPUNK_NEON');
+
+    const clearedState = gamificationReducer(previewState, clearPreviewTheme());
+    expect(clearedState.previewTheme).toBeNull();
   });
 });

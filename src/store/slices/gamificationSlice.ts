@@ -42,6 +42,9 @@ export interface GamificationState {
   leaderboard: LeaderboardUser[];
   equippedTheme: CatalogItem | null;
   equippedMedal: CatalogItem | null;
+  equippedFrame: CatalogItem | null;
+  equippedTitle: CatalogItem | null;
+  previewTheme: CatalogItem | null;
   rewardQueue: FloatingRewardNotification[];
   loading: boolean;
   actionLoading: boolean;
@@ -53,6 +56,9 @@ const initialState: GamificationState = {
   leaderboard: [],
   equippedTheme: null,
   equippedMedal: null,
+  equippedFrame: null,
+  equippedTitle: null,
+  previewTheme: null,
   rewardQueue: [],
   loading: false,
   actionLoading: false,
@@ -88,14 +94,22 @@ export const buyItem = createAsyncThunk(
 export const equipItem = createAsyncThunk(
   'gamification/equipItem',
   async (
-    payload: { itemId: string; type: 'THEME' | 'MEDAL' },
+    payload: { itemId: string; type: 'THEME' | 'MEDAL' | 'AVATAR_FRAME' | 'TITLE' },
     { rejectWithValue },
   ) => {
     try {
-      const response = await api.patch('/gamification/equip', {
-        itemId: payload.itemId,
-      });
-      return { payload, data: response.data };
+      const body: Record<string, string> = {};
+      if (payload.type === 'THEME') body.themeId = payload.itemId;
+      if (payload.type === 'MEDAL') body.medalId = payload.itemId;
+
+      let responseData: any = {};
+      // If equipping theme or medal, persist to backend
+      if (payload.type === 'THEME' || payload.type === 'MEDAL') {
+        const response = await api.patch('/gamification/equip', body);
+        responseData = response.data;
+      }
+
+      return { payload, data: responseData };
     } catch (err: any) {
       const msg = err.response?.data?.message || 'Failed to equip item';
       return rejectWithValue(Array.isArray(msg) ? msg[0] : msg);
@@ -123,6 +137,29 @@ export const gamificationSlice = createSlice({
   name: 'gamification',
   initialState,
   reducers: {
+    setPreviewTheme: (state, action: PayloadAction<CatalogItem | null>) => {
+      state.previewTheme = action.payload;
+    },
+    clearPreviewTheme: (state) => {
+      state.previewTheme = null;
+    },
+    equipLocalCosmetic: (
+      state,
+      action: PayloadAction<{ item: CatalogItem; type: 'AVATAR_FRAME' | 'TITLE' }>,
+    ) => {
+      const { item, type } = action.payload;
+      if (type === 'AVATAR_FRAME') {
+        state.equippedFrame = item;
+      } else if (type === 'TITLE') {
+        state.equippedTitle = item;
+      }
+      state.catalog = state.catalog.map((i) => {
+        if (i.type === type) {
+          return { ...i, isEquipped: i.id === item.id };
+        }
+        return i;
+      });
+    },
     queueRewardNotification: (
       state,
       action: PayloadAction<Omit<FloatingRewardNotification, 'id' | 'createdAt'>>,
@@ -150,6 +187,15 @@ export const gamificationSlice = createSlice({
     builder.addCase(fetchCatalog.fulfilled, (state, action) => {
       state.loading = false;
       state.catalog = action.payload;
+      // sync equippedTheme / medal
+      const equippedTh = action.payload.find(
+        (i: CatalogItem) => i.type === 'THEME' && i.isEquipped,
+      );
+      if (equippedTh) state.equippedTheme = equippedTh;
+      const equippedMed = action.payload.find(
+        (i: CatalogItem) => i.type === 'MEDAL' && i.isEquipped,
+      );
+      if (equippedMed) state.equippedMedal = equippedMed;
     });
     builder.addCase(fetchCatalog.rejected, (state, action) => {
       state.loading = false;
@@ -179,8 +225,13 @@ export const gamificationSlice = createSlice({
       if (item) {
         if (type === 'THEME') {
           state.equippedTheme = item;
+          state.previewTheme = null; // clear preview if equipped
         } else if (type === 'MEDAL') {
           state.equippedMedal = item;
+        } else if (type === 'AVATAR_FRAME') {
+          state.equippedFrame = item;
+        } else if (type === 'TITLE') {
+          state.equippedTitle = item;
         }
       }
       // Update catalog flags
@@ -200,6 +251,9 @@ export const gamificationSlice = createSlice({
 });
 
 export const {
+  setPreviewTheme,
+  clearPreviewTheme,
+  equipLocalCosmetic,
   queueRewardNotification,
   dismissRewardNotification,
   clearAllRewardNotifications,
