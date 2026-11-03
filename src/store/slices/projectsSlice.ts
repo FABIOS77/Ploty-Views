@@ -3,6 +3,8 @@ import api from '../../services/api';
 
 export interface ProjectMember {
   id: string;
+  projectId?: string;
+  userId?: string;
   role: 'OWNER' | 'ADMIN' | 'MEMBER' | 'VIEWER';
   user: {
     id: string;
@@ -114,7 +116,9 @@ export const addProjectMember = createAsyncThunk(
         userId: payload.userId,
         role: payload.role || 'MEMBER',
       });
-      return { projectId: payload.projectId, member: response.data };
+      const rawData = response.data;
+      const member = rawData?.member ?? rawData;
+      return { projectId: payload.projectId, member };
     } catch (err: any) {
       const msg = err.response?.data?.message || 'Failed to add member';
       return rejectWithValue(Array.isArray(msg) ? msg[0] : msg);
@@ -207,7 +211,25 @@ export const projectsSlice = createSlice({
         if (!state.selectedProject.members) {
           state.selectedProject.members = [];
         }
-        state.selectedProject.members.push(action.payload.member);
+        const member = action.payload.member;
+        if (member) {
+          const normalizedMember = {
+            id: member.id || `member-${Date.now()}`,
+            role: member.role || 'MEMBER',
+            projectId: action.payload.projectId,
+            userId: member.userId || member.user?.id,
+            user: member.user || {
+              id: member.userId || '',
+              username: member.username || 'Usuario',
+              email: member.email || '',
+              avatarUrl: member.avatarUrl || null,
+            },
+          };
+          state.selectedProject.members = state.selectedProject.members.filter(
+            (m) => (m.user?.id || m.userId) !== normalizedMember.user.id,
+          );
+          state.selectedProject.members.push(normalizedMember);
+        }
       }
     });
 
@@ -216,7 +238,7 @@ export const projectsSlice = createSlice({
       if (state.selectedProject && state.selectedProject.id === action.payload.projectId) {
         if (state.selectedProject.members) {
           state.selectedProject.members = state.selectedProject.members.filter(
-            (m) => m.user.id !== action.payload.userId,
+            (m) => (m.user?.id ?? m.userId) !== action.payload.userId,
           );
         }
       }

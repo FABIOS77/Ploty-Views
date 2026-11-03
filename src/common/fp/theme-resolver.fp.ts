@@ -1,6 +1,7 @@
 /**
  * Pure Functional Theme Resolver for Ploty-Views
- * Manages 4 contrasting dynamic themes, live previewing, and runtime CSS variable injection.
+ * Manages 5 contrasting dynamic themes (2 free base themes + 3 unlockable themes),
+ * live previewing, and runtime CSS variable injection.
  */
 
 export interface ThemeTokens {
@@ -26,7 +27,11 @@ export interface ThemeTokens {
   readonly name: string;
 }
 
-export const THEME_DEFAULT_PLOTY: Readonly<ThemeTokens> = Object.freeze({
+/**
+ * Free Theme 1 (Base Level 0): Tactile Bento Sage
+ * Light sage canvas, pure white tactile cards, crisp charcoal typography and periwinkle accents.
+ */
+export const THEME_TACTILE_BENTO: Readonly<ThemeTokens> = Object.freeze({
   white: '#FFFFFF',
   charcoal: '#312F30',
   periwinkle: '#7477FF',
@@ -45,10 +50,40 @@ export const THEME_DEFAULT_PLOTY: Readonly<ThemeTokens> = Object.freeze({
   shadow: '4px 4px 0px 0px #312F30',
   glowEffect: false,
   confettiColors: Object.freeze(['#7477FF', '#F66554', '#F9CD61', '#C5D4CA', '#FFFFFF']),
-  themeCode: 'THEME_DEFAULT_PLOTY',
+  themeCode: 'THEME_DEFAULT',
   name: 'Ploty Tactile Bento (Nivel 0)',
 });
 
+/**
+ * Free Theme 2: Ploty Indigo Core (Classic Dark Obsidian)
+ * Deep obsidian navy canvas (#0F172A), Slate 800 cards, high-voltage Indigo & Violet accents.
+ */
+export const THEME_INDIGO_OBSIDIAN: Readonly<ThemeTokens> = Object.freeze({
+  white: '#FFFFFF',
+  charcoal: '#090D16',
+  periwinkle: '#6366F1',
+  coral: '#F43F5E',
+  gold: '#F59E0B',
+  sage: '#1E293B',
+  canvas: '#0F172A',
+  card: '#1E293B',
+  dark: '#090D16',
+  primaryColor: '#6366F1',
+  backgroundColor: '#0F172A',
+  accentColor: '#818CF8',
+  goldColor: '#F59E0B',
+  textColor: '#F8FAFC',
+  textDarkColor: '#FFFFFF',
+  shadow: '4px 4px 0px 0px #6366F1',
+  glowEffect: true,
+  confettiColors: Object.freeze(['#6366F1', '#818CF8', '#F59E0B', '#38BDF8', '#FFFFFF']),
+  themeCode: 'THEME_DEFAULT_PLOTY',
+  name: 'Ploty Indigo Core',
+});
+
+/**
+ * Unlockable Theme: Cyberpunk Neon Overdrive (Level 2, 100 coins)
+ */
 export const THEME_CYBERPUNK_NEON: Readonly<ThemeTokens> = Object.freeze({
   white: '#FFFFFF',
   charcoal: '#05060A',
@@ -72,6 +107,9 @@ export const THEME_CYBERPUNK_NEON: Readonly<ThemeTokens> = Object.freeze({
   name: 'Cyberpunk Neon Overdrive',
 });
 
+/**
+ * Unlockable Theme: Solar Flare Executive (Level 3, 250 coins)
+ */
 export const THEME_SOLAR_GOLD: Readonly<ThemeTokens> = Object.freeze({
   white: '#FFFFFF',
   charcoal: '#0E0C0A',
@@ -95,6 +133,9 @@ export const THEME_SOLAR_GOLD: Readonly<ThemeTokens> = Object.freeze({
   name: 'Solar Flare Executive',
 });
 
+/**
+ * Unlockable Theme: Emerald Matrix Hacker (Level 4, 400 coins)
+ */
 export const THEME_EMERALD_MATRIX: Readonly<ThemeTokens> = Object.freeze({
   white: '#FFFFFF',
   charcoal: '#030A07',
@@ -118,15 +159,32 @@ export const THEME_EMERALD_MATRIX: Readonly<ThemeTokens> = Object.freeze({
   name: 'Emerald Matrix Hacker',
 });
 
+export const THEME_DEFAULT = THEME_TACTILE_BENTO;
+export const THEME_DEFAULT_PLOTY = THEME_INDIGO_OBSIDIAN;
+export const THEME_INDIGO_CORE = THEME_INDIGO_OBSIDIAN;
+
 export const THEME_CATALOG_REGISTRY: Record<string, Readonly<ThemeTokens>> = {
-  THEME_DEFAULT_PLOTY,
-  THEME_DEFAULT: THEME_DEFAULT_PLOTY,
+  // Free Theme 1 aliases
+  THEME_DEFAULT: THEME_TACTILE_BENTO,
+  THEME_TACTILE_BENTO: THEME_TACTILE_BENTO,
+  DEFAULT: THEME_TACTILE_BENTO,
+
+  // Free Theme 2 aliases
+  THEME_DEFAULT_PLOTY: THEME_INDIGO_OBSIDIAN,
+  THEME_INDIGO_CORE: THEME_INDIGO_OBSIDIAN,
+  THEME_CLASSIC_DARK: THEME_INDIGO_OBSIDIAN,
+  THEME_DARK: THEME_INDIGO_OBSIDIAN,
+
+  // Unlockable themes
   THEME_CYBERPUNK_NEON,
+  THEME_CYBERPUNK: THEME_CYBERPUNK_NEON,
   THEME_SOLAR_GOLD,
+  THEME_SOLAR_FLARE: THEME_SOLAR_GOLD,
   THEME_EMERALD_MATRIX,
+  THEME_MATRIX: THEME_EMERALD_MATRIX,
 };
 
-export const LEVEL_0_PALETTE = THEME_DEFAULT_PLOTY;
+export const LEVEL_0_PALETTE = THEME_TACTILE_BENTO;
 
 /**
  * Pure function to resolve active theme tokens from user's equipped theme object or code

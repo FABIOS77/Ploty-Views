@@ -16,10 +16,10 @@ export const MainLayout: React.FC = () => {
   const previewTheme = useAppSelector((state) => state.gamification.previewTheme);
 
   useEffect(() => {
-    if (token && !user) {
+    if (token) {
       dispatch(fetchUserProfile());
     }
-  }, [token, user, dispatch]);
+  }, [token, dispatch]);
 
   // Apply active or preview theme tokens to document root
   useEffect(() => {

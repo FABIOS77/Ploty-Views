@@ -205,16 +205,19 @@ export const activitiesSlice = createSlice({
       }
 
       // Store reward details
-      const reward = data.reward || {};
+      const reward = data.rewards || data.reward || {};
+      const xpGained = reward.xpGained ?? reward.xpEarned ?? 50;
+      const coinsGained = reward.coinsGained ?? reward.coinsEarned ?? 25;
+      const updatedStats = data.updatedStats || data.userStats || {};
       state.lastReward = {
-        xpGained: reward.xpGained || 50,
-        coinsGained: reward.coinsGained || 25,
-        newLevel: reward.newLevel,
-        newTotalXp: reward.newTotalXp,
-        newCoins: reward.newCoins,
-        currentStreak: reward.streakDays ?? reward.currentStreak ?? 1,
-        leveledUp: Boolean(reward.leveledUp),
-        unlockedMedals: reward.unlockedMedals || [],
+        xpGained,
+        coinsGained,
+        newLevel: reward.newLevel ?? updatedStats.level,
+        newTotalXp: reward.newTotalXp ?? updatedStats.xp,
+        newCoins: reward.newCoins ?? updatedStats.coins,
+        currentStreak: reward.streakDays ?? reward.currentStreak ?? updatedStats.currentStreak ?? 1,
+        leveledUp: Boolean(reward.leveledUp ?? data.levelUp),
+        unlockedMedals: reward.unlockedMedals || data.newlyUnlockedItems || [],
         activityTitle: title,
       };
     });

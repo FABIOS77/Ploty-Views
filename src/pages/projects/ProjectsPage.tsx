@@ -186,23 +186,28 @@ export const ProjectsPage: React.FC = () => {
                   <div className="mt-5 pt-4 border-t border-ploty-charcoal/10 flex items-center justify-between">
                     <div className="flex items-center -space-x-2">
                       {project.members && project.members.length > 0 ? (
-                        project.members.slice(0, 4).map((member) => (
-                          <div
-                            key={member.id}
-                            className="w-7 h-7 rounded-full border-2 border-ploty-white bg-ploty-periwinkle/30 flex items-center justify-center text-[10px] font-black text-ploty-charcoal overflow-hidden shadow-sm"
-                            title={member.user.username}
-                          >
-                            {member.user.avatarUrl ? (
-                              <img
-                                src={member.user.avatarUrl}
-                                alt={member.user.username}
-                                className="w-full h-full object-cover"
-                              />
-                            ) : (
-                              member.user.username.slice(0, 2).toUpperCase()
-                            )}
-                          </div>
-                        ))
+                        project.members.slice(0, 4).map((member) => {
+                          const username = member.user?.username ?? (member as any).username ?? 'Usuario';
+                          const avatarUrl = member.user?.avatarUrl ?? (member as any).avatarUrl;
+
+                          return (
+                            <div
+                              key={member.id}
+                              className="w-7 h-7 rounded-full border-2 border-ploty-white bg-ploty-periwinkle/30 flex items-center justify-center text-[10px] font-black text-ploty-charcoal overflow-hidden shadow-sm"
+                              title={username}
+                            >
+                              {avatarUrl ? (
+                                <img
+                                  src={avatarUrl}
+                                  alt={username}
+                                  className="w-full h-full object-cover"
+                                />
+                              ) : (
+                                (username || 'U').slice(0, 2).toUpperCase()
+                              )}
+                            </div>
+                          );
+                        })
                       ) : (
                         <div className="w-7 h-7 rounded-full border-2 border-ploty-white bg-ploty-sage/40 flex items-center justify-center text-xs">
                           <Users className="w-3.5 h-3.5 text-ploty-charcoal/60" />

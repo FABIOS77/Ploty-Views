@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useMemo } from 'react';
+import React, { useEffect, useState, useMemo, Component, type ReactNode } from 'react';
 import { motion } from 'framer-motion';
 import {
   AreaChart,
@@ -27,6 +27,7 @@ import {
   Zap,
   Users,
   Award,
+  AlertTriangle,
 } from 'lucide-react';
 import { useAppDispatch, useAppSelector } from '../../store/hooks';
 import {
@@ -38,21 +39,62 @@ import {
 import { fetchProjects } from '../../store/slices/projectsSlice';
 import {
   transformDailyTrendForChart,
+  transformPriorityBreakdownForChart,
+  transformStatusDistributionForChart,
+  normalizeRecurrenceVsSingle,
   calculateEfficiencyScore,
   filterAndSortActionProgress,
   computeProjectComparisonMatrix,
+  DEFAULT_STATUS_COLORS,
 } from '../../common/fp/chart-transformers.fp';
 import { BentoSpringCard } from '../../common/motion/BentoSpringCard';
 import { springConfig } from '../../common/motion/motion-skills';
 
-const STATUS_COLORS: Record<string, string> = {
-  COMPLETED: '#F66554', // Coral
-  IN_PROGRESS: '#7477FF', // Periwinkle
-  PENDING: '#F9CD61', // Gold
-  OVERDUE: '#312F30', // Charcoal
-};
+interface ErrorBoundaryProps {
+  children: ReactNode;
+}
 
-export const ReportsPage: React.FC = () => {
+interface ErrorBoundaryState {
+  hasError: boolean;
+}
+
+class ReportsErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
+  constructor(props: ErrorBoundaryProps) {
+    super(props);
+    this.state = { hasError: false };
+  }
+
+  static getDerivedStateFromError() {
+    return { hasError: true };
+  }
+
+  componentDidCatch(error: any) {
+    console.error('Reports ErrorBoundary caught an error:', error);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="p-8 rounded-3xl bg-ploty-white text-ploty-charcoal border-2 border-ploty-coral/40 shadow-tactile flex flex-col items-center justify-center text-center space-y-4">
+          <AlertTriangle className="w-12 h-12 text-ploty-coral animate-bounce" />
+          <h3 className="text-xl font-black">Panel de Métricas en Calibración</h3>
+          <p className="text-sm text-ploty-charcoal/70 max-w-md">
+            No se pudieron renderizar algunas visualizaciones complejas con los datos actuales. Recarga la página o completa una actividad para generar nuevas métricas.
+          </p>
+          <button
+            onClick={() => this.setState({ hasError: false })}
+            className="px-4 py-2 rounded-2xl bg-ploty-periwinkle text-ploty-white font-black text-xs hover:opacity-90 transition-opacity"
+          >
+            Reintentar Renderizado
+          </button>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
+export const ReportsPageContent: React.FC = () => {
   const dispatch = useAppDispatch();
   const { dashboard, projectReport, selectedDaysRange, selectedProjectId } =
     useAppSelector((state) => state.reports);
@@ -92,7 +134,7 @@ export const ReportsPage: React.FC = () => {
   // Determine active dataset based on scope
   const activeDailyTrend = useMemo(() => {
     const raw = scope === 'GLOBAL' ? dashboard?.dailyTrend : projectReport?.dailyTrend;
-    return transformDailyTrendForChart(raw || []);
+    return transformDailyTrendForChart(raw);
   }, [scope, dashboard?.dailyTrend, projectReport?.dailyTrend]);
 
   const efficiencyScore = useMemo(() => {
@@ -103,48 +145,46 @@ export const ReportsPage: React.FC = () => {
   }, [dashboard?.overview, dashboard?.recurrenceVsSingle]);
 
   const activeActionProgressList = useMemo(() => {
-    const raw = scope === 'GLOBAL'
-      ? dashboard?.actionProgressList
-      : projectReport?.actionProgress;
-    return filterAndSortActionProgress(raw || [], actionFilter, actionSearch, actionSort);
-  }, [scope, dashboard?.actionProgressList, projectReport?.actionProgress, actionFilter, actionSearch, actionSort]);
+    const raw =
+      scope === 'GLOBAL'
+        ? dashboard?.actionProgressList
+        : projectReport?.actionProgress;
+    return filterAndSortActionProgress(raw, actionFilter, actionSearch, actionSort);
+  }, [
+    scope,
+    dashboard?.actionProgressList,
+    projectReport?.actionProgress,
+    actionFilter,
+    actionSearch,
+    actionSort,
+  ]);
 
   const projectComparison = useMemo(() => {
-    return computeProjectComparisonMatrix(dashboard?.projectsProgress || []);
+    return computeProjectComparisonMatrix(dashboard?.projectsProgress);
   }, [dashboard?.projectsProgress]);
 
   // Priority breakdown formatted for recharts
   const priorityChartData = useMemo(() => {
-    const breakdown = scope === 'GLOBAL'
-      ? dashboard?.priorityBreakdown
-      : projectReport?.priorityBreakdown;
-
-    if (!breakdown) return [];
-
-    return Object.keys(breakdown).map((key) => {
-      const data = breakdown[key] || { total: 0, completed: 0 };
-      return {
-        priority: key,
-        Total: data.total || 0,
-        Completadas: data.completed || 0,
-      };
-    });
+    const raw =
+      scope === 'GLOBAL'
+        ? dashboard?.priorityBreakdown
+        : projectReport?.priorityBreakdown;
+    return transformPriorityBreakdownForChart(raw);
   }, [scope, dashboard?.priorityBreakdown, projectReport?.priorityBreakdown]);
 
   // Status distribution formatted for recharts
   const statusPieData = useMemo(() => {
-    const dist = scope === 'GLOBAL'
-      ? dashboard?.statusDistribution
-      : projectReport?.statusDistribution;
-
-    if (!dist) return [];
-
-    return Object.entries(dist).map(([status, count]) => ({
-      name: status,
-      value: count,
-      color: STATUS_COLORS[status] || '#7477FF',
-    }));
+    const raw =
+      scope === 'GLOBAL'
+        ? dashboard?.statusDistribution
+        : projectReport?.statusDistribution;
+    return transformStatusDistributionForChart(raw, DEFAULT_STATUS_COLORS);
   }, [scope, dashboard?.statusDistribution, projectReport?.statusDistribution]);
+
+  // Normalized Recurrence Vs Single
+  const recurrenceStats = useMemo(() => {
+    return normalizeRecurrenceVsSingle(dashboard?.recurrenceVsSingle);
+  }, [dashboard?.recurrenceVsSingle]);
 
   return (
     <div className="space-y-6">
@@ -158,19 +198,19 @@ export const ReportsPage: React.FC = () => {
         <div className="space-y-1">
           <div className="inline-flex items-center gap-2 px-3 py-1 rounded-2xl bg-ploty-periwinkle/20 border border-ploty-periwinkle/40 text-ploty-periwinkle text-xs font-black uppercase tracking-wider">
             <BarChart3 className="w-3.5 h-3.5" />
-            <span>Módulo de Métricas & Visual Analytics</span>
+            <span>Métricas Bento & Analítica Gamificada</span>
           </div>
           <h2 className="text-2xl sm:text-3xl font-black tracking-tight">
-            Dashboard de Rendimiento Bento
+            Dashboard de Rendimiento & Hábitos
           </h2>
-          <p className="text-sm text-ploty-sage/80 max-w-xl">
-            Gráficas táctiles interactivas para visualizar el cumplimiento de actividades, proyectos y hábitos.
+          <p className="text-sm text-ploty-white/70 max-w-xl">
+            Inspección táctil de tendencias de XP, distribución de estados, cumplimiento por prioridad y avance de proyectos.
           </p>
         </div>
 
-        {/* Global vs Project Scope Switcher */}
-        <div className="flex flex-col sm:flex-row items-center gap-3">
-          <div className="flex items-center gap-2 bg-ploty-white/10 p-1.5 rounded-2xl border border-ploty-white/10">
+        {/* Scope Pill Toggle */}
+        <div className="flex items-center gap-2 flex-wrap">
+          <div className="flex items-center bg-ploty-white/10 p-1 rounded-2xl border border-ploty-white/10">
             <button
               onClick={() => handleScopeChange('GLOBAL')}
               className={`flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-black transition-all ${
@@ -179,8 +219,7 @@ export const ReportsPage: React.FC = () => {
                   : 'text-ploty-white/70 hover:text-ploty-white'
               }`}
             >
-              <Globe className="w-3.5 h-3.5" />
-              <span>Panorama Global</span>
+              <Globe className="w-3.5 h-3.5" /> Global
             </button>
             <button
               onClick={() => handleScopeChange('PROJECT')}
@@ -190,12 +229,11 @@ export const ReportsPage: React.FC = () => {
                   : 'text-ploty-white/70 hover:text-ploty-white'
               }`}
             >
-              <FolderKanban className="w-3.5 h-3.5" />
-              <span>Por Proyecto</span>
+              <FolderKanban className="w-3.5 h-3.5" /> Por Proyecto
             </button>
           </div>
 
-          {/* Days Range or Project Selector */}
+          {/* Range Pills (Global) or Project Select */}
           {scope === 'GLOBAL' ? (
             <div className="flex items-center gap-1 bg-ploty-white/10 p-1 rounded-2xl border border-ploty-white/10">
               {[7, 14, 30].map((days) => (
@@ -252,8 +290,8 @@ export const ReportsPage: React.FC = () => {
             </p>
             <p className="text-xl font-black text-ploty-coral">
               {scope === 'GLOBAL'
-                ? dashboard?.overview.completionRate ?? 0
-                : projectReport?.project.progressPercent ?? 0}
+                ? dashboard?.overview?.completionRate ?? 0
+                : projectReport?.project?.progressPercent ?? 0}
               %
             </p>
           </div>
@@ -267,7 +305,7 @@ export const ReportsPage: React.FC = () => {
             <p className="text-[11px] font-black uppercase text-ploty-charcoal/60">
               XP Total Ganada
             </p>
-            <p className="text-xl font-black">{dashboard?.overview.xp ?? 0}</p>
+            <p className="text-xl font-black">{dashboard?.overview?.xp ?? 0}</p>
           </div>
         </div>
 
@@ -279,7 +317,7 @@ export const ReportsPage: React.FC = () => {
             <p className="text-[11px] font-black uppercase text-ploty-charcoal/60">
               Racha Activa
             </p>
-            <p className="text-xl font-black">{dashboard?.overview.currentStreak ?? 0} días</p>
+            <p className="text-xl font-black">{dashboard?.overview?.currentStreak ?? 0} días</p>
           </div>
         </div>
       </div>
@@ -300,7 +338,7 @@ export const ReportsPage: React.FC = () => {
             </span>
           </div>
 
-          <div className="h-64 w-full">
+          <div className="h-64 min-h-[260px] w-full">
             {activeDailyTrend.length > 0 ? (
               <ResponsiveContainer width="100%" height="100%">
                 <AreaChart data={[...activeDailyTrend]}>
@@ -341,7 +379,7 @@ export const ReportsPage: React.FC = () => {
               </ResponsiveContainer>
             ) : (
               <div className="flex items-center justify-center h-full text-xs text-ploty-white/70">
-                Sin registros de actividad en este periodo.
+                Aún no hay suficientes métricas registradas para este periodo.
               </div>
             )}
           </div>
@@ -358,22 +396,20 @@ export const ReportsPage: React.FC = () => {
             </div>
 
             {/* Recurrence vs Single Quick Badge */}
-            {dashboard?.recurrenceVsSingle && (
-              <div className="flex items-center gap-2 text-xs font-black">
-                <span className="bg-ploty-white/20 px-2.5 py-1 rounded-xl">
-                  ⚡ Únicas: {dashboard.recurrenceVsSingle.single?.completed ?? 0}
-                </span>
-                <span className="bg-ploty-white/20 px-2.5 py-1 rounded-xl">
-                  🔄 Hábitos: {dashboard.recurrenceVsSingle.recurring?.totalExecutions ?? 0}
-                </span>
-              </div>
-            )}
+            <div className="flex items-center gap-2 text-xs font-black">
+              <span className="bg-ploty-white/20 px-2.5 py-1 rounded-xl">
+                ⚡ Únicas: {recurrenceStats.single.completed}
+              </span>
+              <span className="bg-ploty-white/20 px-2.5 py-1 rounded-xl">
+                🔄 Hábitos: {recurrenceStats.recurring.totalExecutions}
+              </span>
+            </div>
           </div>
 
-          <div className="h-64 w-full">
+          <div className="h-64 min-h-[260px] w-full">
             {priorityChartData.length > 0 ? (
               <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={priorityChartData}>
+                <BarChart data={[...priorityChartData]}>
                   <XAxis
                     dataKey="priority"
                     stroke="#FFFFFF"
@@ -398,7 +434,7 @@ export const ReportsPage: React.FC = () => {
               </ResponsiveContainer>
             ) : (
               <div className="flex items-center justify-center h-full text-xs text-ploty-white/70">
-                Sin datos de prioridad.
+                Aún no hay suficientes actividades registradas por prioridad.
               </div>
             )}
           </div>
@@ -416,13 +452,13 @@ export const ReportsPage: React.FC = () => {
             </span>
           </div>
 
-          <div className="h-64 w-full flex items-center justify-center relative">
-            {statusPieData.length > 0 ? (
+          <div className="h-64 min-h-[260px] w-full flex items-center justify-center relative">
+            {statusPieData.length > 0 && statusPieData.some((s) => s.value > 0) ? (
               <>
                 <ResponsiveContainer width="100%" height="100%">
                   <PieChart>
                     <Pie
-                      data={statusPieData}
+                      data={[...statusPieData]}
                       innerRadius={65}
                       outerRadius={95}
                       paddingAngle={5}
@@ -444,7 +480,9 @@ export const ReportsPage: React.FC = () => {
                 </div>
               </>
             ) : (
-              <div className="text-xs text-ploty-charcoal/60">Sin actividades registradas.</div>
+              <div className="text-xs text-ploty-charcoal/60">
+                Aún no hay suficientes métricas registradas.
+              </div>
             )}
           </div>
 
@@ -484,7 +522,7 @@ export const ReportsPage: React.FC = () => {
             )}
           </div>
 
-          <div className="h-64 overflow-y-auto space-y-3 pr-1">
+          <div className="h-64 min-h-[260px] overflow-y-auto space-y-3 pr-1">
             {scope === 'GLOBAL' ? (
               projectComparison.projects.length > 0 ? (
                 projectComparison.projects.map((proj) => (
@@ -533,7 +571,7 @@ export const ReportsPage: React.FC = () => {
                       />
                     ) : (
                       <div className="w-8 h-8 rounded-full bg-ploty-periwinkle/30 flex items-center justify-center text-xs font-black">
-                        {member.username.slice(0, 2).toUpperCase()}
+                        {(member.username || 'U').slice(0, 2).toUpperCase()}
                       </div>
                     )}
                     <div>
@@ -674,5 +712,13 @@ export const ReportsPage: React.FC = () => {
         </div>
       </div>
     </div>
+  );
+};
+
+export const ReportsPage: React.FC = () => {
+  return (
+    <ReportsErrorBoundary>
+      <ReportsPageContent />
+    </ReportsErrorBoundary>
   );
 };

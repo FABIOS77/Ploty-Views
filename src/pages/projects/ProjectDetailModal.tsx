@@ -17,6 +17,8 @@ import {
   removeProjectMember,
   searchUsers,
   clearSearchResults,
+  fetchProjectById,
+  fetchProjects,
 } from '../../store/slices/projectsSlice';
 import { springConfig } from '../../common/motion/motion-skills';
 
@@ -60,6 +62,8 @@ export const ProjectDetailModal: React.FC<ProjectDetailModalProps> = ({
     );
     setSearchQuery('');
     dispatch(clearSearchResults());
+    dispatch(fetchProjectById(project.id));
+    dispatch(fetchProjects());
   };
 
   const handleRemoveMember = async (userId: string) => {
@@ -70,6 +74,8 @@ export const ProjectDetailModal: React.FC<ProjectDetailModalProps> = ({
           userId,
         }),
       );
+      dispatch(fetchProjectById(project.id));
+      dispatch(fetchProjects());
     }
   };
 
@@ -77,7 +83,7 @@ export const ProjectDetailModal: React.FC<ProjectDetailModalProps> = ({
     project.creatorId === currentUser?.id ||
     project.members?.some(
       (m) =>
-        m.user.id === currentUser?.id &&
+        (m.user?.id || m.userId) === currentUser?.id &&
         (m.role === 'OWNER' || m.role === 'ADMIN'),
     );
 
@@ -164,48 +170,55 @@ export const ProjectDetailModal: React.FC<ProjectDetailModalProps> = ({
               {/* Members List */}
               <div className="space-y-2 max-h-44 overflow-y-auto pr-1">
                 {project.members && project.members.length > 0 ? (
-                  project.members.map((member) => (
-                    <div
-                      key={member.id}
-                      className="p-3 rounded-2xl bg-ploty-sage/15 border border-ploty-charcoal/10 flex items-center justify-between gap-3"
-                    >
-                      <div className="flex items-center gap-3">
-                        {member.user.avatarUrl ? (
-                          <img
-                            src={member.user.avatarUrl}
-                            alt={member.user.username}
-                            className="w-8 h-8 rounded-full object-cover"
-                          />
-                        ) : (
-                          <div className="w-8 h-8 rounded-full bg-ploty-periwinkle/30 flex items-center justify-center font-bold text-xs text-ploty-charcoal">
-                            {member.user.username.slice(0, 2).toUpperCase()}
+                  project.members.map((member) => {
+                    const username = member.user?.username ?? (member as any).username ?? 'Usuario';
+                    const email = member.user?.email ?? (member as any).email ?? '';
+                    const avatarUrl = member.user?.avatarUrl ?? (member as any).avatarUrl;
+                    const memberUserId = member.user?.id ?? (member as any).userId;
+
+                    return (
+                      <div
+                        key={member.id}
+                        className="p-3 rounded-2xl bg-ploty-sage/15 border border-ploty-charcoal/10 flex items-center justify-between gap-3"
+                      >
+                        <div className="flex items-center gap-3">
+                          {avatarUrl ? (
+                            <img
+                              src={avatarUrl}
+                              alt={username}
+                              className="w-8 h-8 rounded-full object-cover"
+                            />
+                          ) : (
+                            <div className="w-8 h-8 rounded-full bg-ploty-periwinkle/30 flex items-center justify-center font-bold text-xs text-ploty-charcoal">
+                              {(username || 'U').slice(0, 2).toUpperCase()}
+                            </div>
+                          )}
+                          <div>
+                            <p className="text-xs font-black">{username}</p>
+                            <p className="text-[11px] text-ploty-charcoal/60">
+                              {email}
+                            </p>
                           </div>
-                        )}
-                        <div>
-                          <p className="text-xs font-black">{member.user.username}</p>
-                          <p className="text-[11px] text-ploty-charcoal/60">
-                            {member.user.email}
-                          </p>
+                        </div>
+
+                        <div className="flex items-center gap-2">
+                          <span className="text-[10px] font-black uppercase tracking-wider px-2.5 py-1 rounded-xl bg-ploty-charcoal text-ploty-white">
+                            {member.role}
+                          </span>
+
+                          {isOwnerOrAdmin && memberUserId && memberUserId !== currentUser?.id && (
+                            <button
+                              onClick={() => handleRemoveMember(memberUserId)}
+                              title="Remover miembro"
+                              className="p-1.5 rounded-xl hover:bg-ploty-coral/10 text-ploty-coral transition-colors"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          )}
                         </div>
                       </div>
-
-                      <div className="flex items-center gap-2">
-                        <span className="text-[10px] font-black uppercase tracking-wider px-2.5 py-1 rounded-xl bg-ploty-charcoal text-ploty-white">
-                          {member.role}
-                        </span>
-
-                        {isOwnerOrAdmin && member.user.id !== currentUser?.id && (
-                          <button
-                            onClick={() => handleRemoveMember(member.user.id)}
-                            title="Remover miembro"
-                            className="p-1.5 rounded-xl hover:bg-ploty-coral/10 text-ploty-coral transition-colors"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
-                        )}
-                      </div>
-                    </div>
-                  ))
+                    );
+                  })
                 ) : (
                   <p className="text-xs text-ploty-charcoal/60 italic py-2">
                     No hay otros colaboradores agregados.
@@ -257,7 +270,7 @@ export const ProjectDetailModal: React.FC<ProjectDetailModalProps> = ({
                   <div className="space-y-1.5 border border-ploty-charcoal/10 p-2 rounded-2xl bg-ploty-sage/10 max-h-36 overflow-y-auto">
                     {searchResults.map((u) => {
                       const alreadyMember = project.members?.some(
-                        (m) => m.user.id === u.id,
+                        (m) => (m.user?.id || m.userId) === u.id,
                       );
                       return (
                         <div

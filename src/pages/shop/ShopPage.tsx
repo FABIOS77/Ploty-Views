@@ -27,8 +27,9 @@ import {
   equipLocalCosmetic,
   type CatalogItem,
 } from '../../store/slices/gamificationSlice';
-import { syncUserStats } from '../../store/slices/authSlice';
+import { syncUserStats, fetchUserProfile } from '../../store/slices/authSlice';
 import { fetchProjects } from '../../store/slices/projectsSlice';
+import { resolveThemeTokens, applyThemeToDocument } from '../../common/fp/theme-resolver.fp';
 import { BentoSpringCard } from '../../common/motion/BentoSpringCard';
 import { StaggerContainer, StaggerItem } from '../../common/motion/StaggerList';
 import { triggerDopamineConfetti } from '../../common/motion/confetti';
@@ -90,16 +91,23 @@ export const ShopPage: React.FC = () => {
 
   const handleEquip = async (item: CatalogItem) => {
     if (item.type === 'THEME' || item.type === 'MEDAL') {
+      if (item.type === 'THEME') {
+        dispatch(clearPreviewTheme());
+      }
       const res = await dispatch(
         equipItem({ itemId: item.id, type: item.type }),
       );
       if (equipItem.fulfilled.match(res)) {
         if (item.type === 'THEME') {
+          dispatch(clearPreviewTheme());
           dispatch(syncUserStats({ equippedTheme: item }));
+          const tokens = resolveThemeTokens(item);
+          applyThemeToDocument(tokens);
         } else if (item.type === 'MEDAL') {
           dispatch(syncUserStats({ equippedMedal: item }));
         }
         dispatch(fetchCatalog());
+        dispatch(fetchUserProfile());
       }
     } else if (item.type === 'AVATAR_FRAME') {
       dispatch(equipLocalCosmetic({ item, type: 'AVATAR_FRAME' }));

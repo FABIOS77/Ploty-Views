@@ -1,6 +1,9 @@
 import { describe, it, expect } from 'vitest';
 import {
   transformDailyTrendForChart,
+  transformPriorityBreakdownForChart,
+  transformStatusDistributionForChart,
+  normalizeRecurrenceVsSingle,
   calculateEfficiencyScore,
   filterAndSortActionProgress,
   computeProjectComparisonMatrix,
@@ -28,27 +31,105 @@ describe('Chart FP Transformers (chart-transformers.fp.ts)', () => {
 
     it('computes 3-point moving average of XP', () => {
       const enriched = transformDailyTrendForChart(rawTrend);
-      // Index 0: [50] -> 50
       expect(enriched[0].xpMovingAvg).toBe(50);
-      // Index 1: [50, 150] -> 100
       expect(enriched[1].xpMovingAvg).toBe(100);
-      // Index 2: [50, 150, 300] -> 500 / 3 = 167
       expect(enriched[2].xpMovingAvg).toBe(167);
-      // Index 3: [150, 300, 100] -> 550 / 3 = 183
       expect(enriched[3].xpMovingAvg).toBe(183);
+    });
+
+    it('handles backend format with xpEarned and coinsEarned without failing', () => {
+      const backendData = [
+        { date: '2026-11-01', completedCount: 2, xpEarned: 80, coinsEarned: 30 },
+        { date: '2026-11-02', completedCount: 4, xpEarned: 160, coinsEarned: 60 },
+      ];
+      const result = transformDailyTrendForChart(backendData);
+      expect(result.length).toBe(2);
+      expect(result[0].xpGained).toBe(80);
+      expect(result[0].xpEarned).toBe(80);
+      expect(result[0].coinsGained).toBe(30);
+      expect(result[0].coinsEarned).toBe(30);
     });
 
     it('handles empty trend array immutably', () => {
       const empty = transformDailyTrendForChart([]);
       expect(empty).toEqual([]);
       expect(Object.isFrozen(empty)).toBe(true);
+
+      const nullTrend = transformDailyTrendForChart(null);
+      expect(nullTrend).toEqual([]);
+    });
+  });
+
+  describe('transformPriorityBreakdownForChart', () => {
+    it('correctly handles backend Array format', () => {
+      const rawArray = [
+        { priority: 'LOW', total: 5, completed: 3, completionRate: 60 },
+        { priority: 'HIGH', total: 10, completed: 8, completionRate: 80 },
+      ];
+      const transformed = transformPriorityBreakdownForChart(rawArray);
+      expect(transformed).toHaveLength(2);
+      expect(transformed[0].priority).toBe('LOW');
+      expect(transformed[0].Total).toBe(5);
+      expect(transformed[0].Completadas).toBe(3);
+    });
+
+    it('correctly handles Object dictionary format', () => {
+      const rawObject = {
+        LOW: { total: 4, completed: 2, completionRate: 50 },
+        CRITICAL: { total: 2, completed: 2, completionRate: 100 },
+      };
+      const transformed = transformPriorityBreakdownForChart(rawObject);
+      expect(transformed).toHaveLength(2);
+      expect(transformed.some((t) => t.priority === 'CRITICAL' && t.Total === 2)).toBe(true);
+    });
+
+    it('safely handles empty or null data', () => {
+      expect(transformPriorityBreakdownForChart(null)).toEqual([]);
+      expect(transformPriorityBreakdownForChart(undefined)).toEqual([]);
+    });
+  });
+
+  describe('transformStatusDistributionForChart', () => {
+    it('transforms array format into Recharts pie data with valid numbers', () => {
+      const raw = [
+        { status: 'COMPLETED', count: 12, percentage: 60 },
+        { status: 'PENDING', count: 8, percentage: 40 },
+      ];
+      const pieData = transformStatusDistributionForChart(raw);
+      expect(pieData).toHaveLength(2);
+      expect(pieData[0].name).toBe('COMPLETED');
+      expect(pieData[0].value).toBe(12);
+      expect(pieData[0].color).toBe('#F66554');
+    });
+
+    it('safely handles null and empty distribution', () => {
+      expect(transformStatusDistributionForChart(null)).toEqual([]);
+    });
+  });
+
+  describe('normalizeRecurrenceVsSingle', () => {
+    it('normalizes backend recurrence structure safely', () => {
+      const backendShape = {
+        single: { totalCreated: 4, totalExecutions: 3, xpEarned: 240 },
+        recurring: { totalCreated: 2, totalExecutions: 14, xpEarned: 800 },
+      };
+      const normalized = normalizeRecurrenceVsSingle(backendShape);
+      expect(normalized.single.completed).toBe(3);
+      expect(normalized.single.total).toBe(4);
+      expect(normalized.recurring.totalExecutions).toBe(14);
+      expect(normalized.recurring.total).toBe(2);
+    });
+
+    it('handles null or missing properties with zero fallbacks', () => {
+      const normalized = normalizeRecurrenceVsSingle(null);
+      expect(normalized.single.total).toBe(0);
+      expect(normalized.single.completed).toBe(0);
+      expect(normalized.recurring.totalExecutions).toBe(0);
     });
   });
 
   describe('calculateEfficiencyScore', () => {
     it('calculates efficiency score using 0.6 * completionRate + 0.4 * min(streak * 10, 100)', () => {
-      // completionRate: 80%, streak: 5 days (5 * 10 = 50)
-      // 0.6 * 80 + 0.4 * 50 = 48 + 20 = 68
       const score = calculateEfficiencyScore({
         totalActivities: 10,
         completedActivities: 8,
@@ -59,8 +140,6 @@ describe('Chart FP Transformers (chart-transformers.fp.ts)', () => {
     });
 
     it('caps streak multiplier at 100 max', () => {
-      // completionRate: 100%, streak: 20 days -> streakScore: 100
-      // 0.6 * 100 + 0.4 * 100 = 100
       const score = calculateEfficiencyScore({
         totalActivities: 10,
         completedActivities: 10,
@@ -190,7 +269,6 @@ describe('Chart FP Transformers (chart-transformers.fp.ts)', () => {
 
     it('calculates average progress correctly', () => {
       const matrix = computeProjectComparisonMatrix(projects);
-      // (90 + 30 + 60) / 3 = 60
       expect(matrix.averageProgress).toBe(60);
       expect(matrix.topProjectName).toBe('Backend API Core');
     });
