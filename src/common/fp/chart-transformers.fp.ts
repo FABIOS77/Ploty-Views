@@ -398,3 +398,208 @@ export const computeProjectComparisonMatrix = (
     topProjectName,
   };
 };
+
+// ==========================================
+// ADVANCED ANALYTICS: HEATMAP, RADAR & CSV
+// ==========================================
+
+export interface HeatmapCell {
+  date: string;
+  shortDate: string;
+  completedCount: number;
+  xpEarned: number;
+  intensity: 0 | 1 | 2 | 3 | 4;
+}
+
+const computeHeatmapIntensity = (
+  completedCount: number,
+  xpEarned: number,
+): 0 | 1 | 2 | 3 | 4 => {
+  if (completedCount <= 0 && xpEarned <= 0) return 0;
+  if (completedCount >= 4 || xpEarned >= 200) return 4;
+  if (completedCount === 3 || xpEarned >= 120) return 3;
+  if (completedCount === 2 || xpEarned >= 60) return 2;
+  return 1;
+};
+
+/**
+ * 8. buildConsistencyHeatmap
+ * Purely constructs a continuous N-day grid (default 30) with intensity levels 0..4.
+ */
+export const buildConsistencyHeatmap = (
+  dailySeries?: readonly RawDailyTrendPoint[] | null,
+  days: number = 30,
+  referenceDate: Date = new Date(),
+): HeatmapCell[] => {
+  const safeDays = Math.max(1, Math.min(365, Math.floor(days)));
+
+  const byDate = (dailySeries ?? []).reduce(
+    (acc, point) => {
+      const key = String(point.date).slice(0, 10);
+      return { ...acc, [key]: point };
+    },
+    {} as Record<string, RawDailyTrendPoint>,
+  );
+
+  return Array.from({ length: safeDays }, (_, idx) => {
+    const offset = safeDays - 1 - idx;
+    const d = new Date(referenceDate.getTime());
+    d.setUTCDate(d.getUTCDate() - offset);
+    const isoDate = d.toISOString().slice(0, 10);
+    const shortDate = d.toLocaleDateString('es-ES', {
+      day: '2-digit',
+      month: 'short',
+      timeZone: 'UTC',
+    });
+
+    const match = byDate[isoDate];
+    const completedCount = Number(match?.completedCount ?? 0);
+    const xpEarned = Number(match?.xpGained ?? match?.xpEarned ?? 0);
+
+    return {
+      date: isoDate,
+      shortDate,
+      completedCount,
+      xpEarned,
+      intensity: computeHeatmapIntensity(completedCount, xpEarned),
+    };
+  });
+};
+
+export interface PlayerRadarMetric {
+  dimension: string;
+  score: number;
+  fullMark: number;
+}
+
+export interface PlayerRadarInput {
+  readonly overview?: OverviewStats | null;
+  readonly priorityBreakdown?: any;
+  readonly recurrenceVsSingle?: any;
+  readonly projectsProgress?: readonly ProjectProgressItem[] | null;
+}
+
+const clampScore = (val: number): number =>
+  Math.max(0, Math.min(100, Math.round(isNaN(val) ? 0 : val)));
+
+/**
+ * 9. buildPlayerRadarMetrics
+ * Purely computes 5 player dimensions [0..100]: Constancia, Tareas Críticas, Hábitos, Colaboración, Eficiencia.
+ */
+export const buildPlayerRadarMetrics = (
+  input: PlayerRadarInput,
+): PlayerRadarMetric[] => {
+  const overview = input.overview;
+  const streak = Number(overview?.currentStreak ?? 0);
+  const longestStreak = Number(overview?.longestStreak ?? streak);
+  const constancia = clampScore(streak * 15 + longestStreak * 4);
+
+  const priorities = transformPriorityBreakdownForChart(input.priorityBreakdown);
+  const criticalAndHigh = priorities.filter(
+    (p) => p.priority === 'CRITICAL' || p.priority === 'HIGH',
+  );
+  const critTotal = criticalAndHigh.reduce((acc, p) => acc + p.Total, 0);
+  const critCompleted = criticalAndHigh.reduce((acc, p) => acc + p.Completadas, 0);
+  const tareasCriticas =
+    critTotal > 0
+      ? clampScore((critCompleted / critTotal) * 100)
+      : clampScore(overview?.completionRate ?? 0);
+
+  const recStats = normalizeRecurrenceVsSingle(input.recurrenceVsSingle);
+  const habitos = clampScore(
+    recStats.recurring.totalExecutions * 12 + recStats.recurring.activeHabits * 10,
+  );
+
+  const projects = input.projectsProgress ?? [];
+  const teamProjects = projects.filter((p) => p.isTeamProject);
+  const teamAvgProgress =
+    teamProjects.length > 0
+      ? teamProjects.reduce((sum, p) => sum + (p.progressPercent ?? 0), 0) /
+        teamProjects.length
+      : projects.length > 0
+        ? projects.reduce((sum, p) => sum + (p.progressPercent ?? 0), 0) /
+          projects.length
+        : 0;
+  const colaboracion = clampScore(
+    teamProjects.length > 0
+      ? Math.min(40, teamProjects.length * 25) + teamAvgProgress * 0.6
+      : teamAvgProgress * 0.5,
+  );
+
+  const eficiencia = calculateEfficiencyScore(overview, input.recurrenceVsSingle);
+
+  return [
+    { dimension: 'Constancia', score: constancia, fullMark: 100 },
+    { dimension: 'Tareas Críticas', score: tareasCriticas, fullMark: 100 },
+    { dimension: 'Hábitos', score: habitos, fullMark: 100 },
+    { dimension: 'Colaboración', score: colaboracion, fullMark: 100 },
+    { dimension: 'Eficiencia', score: eficiencia, fullMark: 100 },
+  ];
+};
+
+const escapeCsvField = (value: string | number | null | undefined): string => {
+  const str = String(value ?? '');
+  if (/[",\n\r]/.test(str)) {
+    return `"${str.replace(/"/g, '""')}"`;
+  }
+  return str;
+};
+
+export interface CsvExportInput {
+  readonly scope: 'GLOBAL' | 'PROJECT';
+  readonly projectName?: string;
+  readonly actions: readonly ActionProgressItem[];
+  readonly projects?: readonly ProjectProgressItem[];
+}
+
+/**
+ * 10. serializeReportToCsv
+ * Pure RFC-4180 CSV serializer with UTF-8 BOM for clean spreadsheet export.
+ */
+export const serializeReportToCsv = (input: CsvExportInput): string => {
+  const header = [
+    'Sección',
+    'Nombre / Título',
+    'Tipo / Ámbito',
+    'Prioridad',
+    'Estado',
+    'Progreso (%)',
+    'Ejecuciones / Completadas',
+    'XP Generada',
+  ];
+
+  const actionRows = (input.actions ?? []).map((a) =>
+    [
+      input.scope === 'PROJECT' ? `Proyecto: ${input.projectName || 'Actual'}` : 'Acción',
+      a.title,
+      a.type === 'RECURRING' ? 'Hábito Recurrente' : 'Tarea Única',
+      a.priority,
+      a.status,
+      a.progressPercent,
+      a.totalExecutions,
+      a.xpGenerated,
+    ]
+      .map(escapeCsvField)
+      .join(','),
+  );
+
+  const projectRows =
+    input.scope === 'GLOBAL'
+      ? (input.projects ?? []).map((p) =>
+          [
+            'Proyecto',
+            p.name,
+            p.isTeamProject ? 'Equipo' : 'Individual',
+            '-',
+            `${p.completedActivities}/${p.totalActivities}`,
+            p.progressPercent,
+            p.completedActivities,
+            0,
+          ]
+            .map(escapeCsvField)
+            .join(','),
+        )
+      : [];
+
+  return `\uFEFF${[header.map(escapeCsvField).join(','), ...projectRows, ...actionRows].join('\n')}`;
+};

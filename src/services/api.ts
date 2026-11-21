@@ -22,13 +22,27 @@ api.interceptors.request.use(
   (error) => Promise.reject(error),
 );
 
-// Response interceptor to catch unauthorized errors
+// Response interceptor to handle 401 Unauthorized cleanly without redirect loops
 api.interceptors.response.use(
   (response) => response,
   (error) => {
     if (error.response?.status === 401) {
-      // Optional: clear token on session expiration
-      // localStorage.removeItem('ploty_token');
+      const pathname =
+        typeof window !== 'undefined' ? window.location.pathname : '';
+      const isAuthPage =
+        pathname.startsWith('/login') || pathname.startsWith('/register');
+
+      try {
+        localStorage.removeItem('ploty_token');
+        localStorage.removeItem('ploty_user');
+      } catch {
+        // Ignore storage errors in restricted environments
+      }
+
+      if (typeof window !== 'undefined' && !isAuthPage) {
+        window.dispatchEvent(new CustomEvent('ploty:unauthorized'));
+        window.location.replace('/login');
+      }
     }
     return Promise.reject(error);
   },

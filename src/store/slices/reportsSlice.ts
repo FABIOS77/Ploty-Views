@@ -1,11 +1,24 @@
-import { createSlice, createAsyncThunk, type PayloadAction } from '@reduxjs/toolkit';
+import {
+  createSlice,
+  createAsyncThunk,
+  createSelector,
+  type PayloadAction,
+} from '@reduxjs/toolkit';
 import api from '../../services/api';
-import type {
-  RawDailyTrendPoint,
-  ActionProgressItem,
-  ProjectProgressItem,
-  OverviewStats,
-  RecurrenceVsSingleStats,
+import {
+  buildConsistencyHeatmap,
+  buildPlayerRadarMetrics,
+  calculateEfficiencyScore,
+  computeProjectComparisonMatrix,
+  normalizeRecurrenceVsSingle,
+  transformDailyTrendForChart,
+  transformPriorityBreakdownForChart,
+  transformStatusDistributionForChart,
+  type RawDailyTrendPoint,
+  type ActionProgressItem,
+  type ProjectProgressItem,
+  type OverviewStats,
+  type RecurrenceVsSingleStats,
 } from '../../common/fp/chart-transformers.fp';
 
 export interface TeamMemberContribution {
@@ -16,7 +29,8 @@ export interface TeamMemberContribution {
   role: string;
   completedCount: number;
   xpContributed: number;
-  percentageOfTeam: number;
+  contributionPercentage: number;
+  percentageOfTeam?: number;
 }
 
 export interface DashboardReportData {
@@ -67,7 +81,7 @@ export interface ReportsState {
 const initialState: ReportsState = {
   dashboard: null,
   projectReport: null,
-  selectedDaysRange: 14,
+  selectedDaysRange: 30,
   selectedProjectId: null,
   loading: false,
   error: null,
@@ -78,7 +92,7 @@ export const fetchDashboardReport = createAsyncThunk(
   async (days: number | undefined, { rejectWithValue }) => {
     try {
       const response = await api.get('/reports/dashboard', {
-        params: { days: days || 14 },
+        params: { days: days || 30 },
       });
       return response.data;
     } catch (err: any) {
@@ -150,4 +164,80 @@ export const reportsSlice = createSlice({
 
 export const { setDaysRange, setSelectedProjectId, clearReports } =
   reportsSlice.actions;
+
+// ==========================================
+// MEMOIZED REDUX SELECTORS (createSelector)
+// ==========================================
+const selectReportsSlice = (state: { reports: ReportsState }) => state.reports;
+
+export const selectGlobalDailyTrendMemo = createSelector(
+  [selectReportsSlice],
+  (reports) => transformDailyTrendForChart(reports.dashboard?.dailyTrend),
+);
+
+export const selectProjectDailyTrendMemo = createSelector(
+  [selectReportsSlice],
+  (reports) => transformDailyTrendForChart(reports.projectReport?.dailyTrend),
+);
+
+export const selectGlobalEfficiencyScoreMemo = createSelector(
+  [selectReportsSlice],
+  (reports) =>
+    calculateEfficiencyScore(
+      reports.dashboard?.overview,
+      reports.dashboard?.recurrenceVsSingle,
+    ),
+);
+
+export const selectGlobalProjectComparisonMemo = createSelector(
+  [selectReportsSlice],
+  (reports) =>
+    computeProjectComparisonMatrix(reports.dashboard?.projectsProgress),
+);
+
+export const selectGlobalRecurrenceStatsMemo = createSelector(
+  [selectReportsSlice],
+  (reports) => normalizeRecurrenceVsSingle(reports.dashboard?.recurrenceVsSingle),
+);
+
+export const selectGlobalPriorityChartMemo = createSelector(
+  [selectReportsSlice],
+  (reports) =>
+    transformPriorityBreakdownForChart(reports.dashboard?.priorityBreakdown),
+);
+
+export const selectProjectPriorityChartMemo = createSelector(
+  [selectReportsSlice],
+  (reports) =>
+    transformPriorityBreakdownForChart(reports.projectReport?.priorityBreakdown),
+);
+
+export const selectGlobalStatusPieMemo = createSelector(
+  [selectReportsSlice],
+  (reports) =>
+    transformStatusDistributionForChart(reports.dashboard?.statusDistribution),
+);
+
+export const selectProjectStatusPieMemo = createSelector(
+  [selectReportsSlice],
+  (reports) =>
+    transformStatusDistributionForChart(reports.projectReport?.statusDistribution),
+);
+
+export const selectGlobalHeatmapMemo = createSelector(
+  [selectReportsSlice],
+  (reports) => buildConsistencyHeatmap(reports.dashboard?.dailyTrend, 30),
+);
+
+export const selectGlobalRadarMetricsMemo = createSelector(
+  [selectReportsSlice],
+  (reports) =>
+    buildPlayerRadarMetrics({
+      overview: reports.dashboard?.overview,
+      priorityBreakdown: reports.dashboard?.priorityBreakdown,
+      recurrenceVsSingle: reports.dashboard?.recurrenceVsSingle,
+      projectsProgress: reports.dashboard?.projectsProgress,
+    }),
+);
+
 export default reportsSlice.reducer;

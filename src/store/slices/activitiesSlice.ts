@@ -1,6 +1,16 @@
-import { createSlice, createAsyncThunk, type PayloadAction } from '@reduxjs/toolkit';
+import {
+  createSlice,
+  createAsyncThunk,
+  createSelector,
+  type PayloadAction,
+} from '@reduxjs/toolkit';
 import api from '../../services/api';
-import type { ActivityItem, ActivityFilters } from '../../common/fp/activity-selectors.fp';
+import {
+  computeActivitiesSummary,
+  selectFilteredActivities,
+  type ActivityItem,
+  type ActivityFilters,
+} from '../../common/fp/activity-selectors.fp';
 
 export interface CompletionReward {
   xpGained: number;
@@ -21,6 +31,7 @@ export interface ActivitiesState {
   loading: boolean;
   completingId: string | null;
   error: string | null;
+  conflictNotice?: string | null;
   lastReward: CompletionReward | null;
 }
 
@@ -36,6 +47,7 @@ const initialState: ActivitiesState = {
   loading: false,
   completingId: null,
   error: null,
+  conflictNotice: null,
   lastReward: null,
 };
 
@@ -132,8 +144,10 @@ export const completeActivity = createAsyncThunk(
         data: response.data,
       };
     } catch (err: any) {
+      const status = err.response?.status;
       const msg = err.response?.data?.message || 'Failed to complete activity';
-      return rejectWithValue(Array.isArray(msg) ? msg[0] : msg);
+      const normalizedMsg = Array.isArray(msg) ? msg[0] : msg;
+      return rejectWithValue({ status, message: normalizedMsg });
     }
   },
 );
@@ -147,6 +161,13 @@ export const activitiesSlice = createSlice({
     },
     clearCompletedReward: (state) => {
       state.lastReward = null;
+    },
+    clearActivitiesError: (state) => {
+      state.error = null;
+      state.conflictNotice = null;
+    },
+    clearConflictNotice: (state) => {
+      state.conflictNotice = null;
     },
     setSelectedActivity: (state, action: PayloadAction<ActivityItem | null>) => {
       state.selectedActivity = action.payload;
@@ -169,25 +190,39 @@ export const activitiesSlice = createSlice({
 
     // createActivity
     builder.addCase(createActivity.fulfilled, (state, action) => {
+      state.error = null;
       state.activities.unshift(action.payload);
+    });
+    builder.addCase(createActivity.rejected, (state, action) => {
+      state.error = action.payload as string;
     });
 
     // updateActivity
     builder.addCase(updateActivity.fulfilled, (state, action) => {
+      state.error = null;
       const index = state.activities.findIndex((a) => a.id === action.payload.id);
       if (index !== -1) {
         state.activities[index] = action.payload;
       }
     });
+    builder.addCase(updateActivity.rejected, (state, action) => {
+      state.error = action.payload as string;
+    });
 
     // deleteActivity
     builder.addCase(deleteActivity.fulfilled, (state, action) => {
+      state.error = null;
       state.activities = state.activities.filter((a) => a.id !== action.payload);
+    });
+    builder.addCase(deleteActivity.rejected, (state, action) => {
+      state.error = action.payload as string;
     });
 
     // completeActivity
     builder.addCase(completeActivity.pending, (state, action) => {
       state.completingId = action.meta.arg.id;
+      state.error = null;
+      state.conflictNotice = null;
     });
     builder.addCase(completeActivity.fulfilled, (state, action) => {
       state.completingId = null;
@@ -198,7 +233,10 @@ export const activitiesSlice = createSlice({
       const index = state.activities.findIndex((a) => a.id === activityId);
       if (index !== -1) {
         if (updatedActivity) {
-          state.activities[index] = updatedActivity;
+          state.activities[index] = {
+            ...state.activities[index],
+            ...updatedActivity,
+          };
         } else {
           state.activities[index].status = 'COMPLETED';
         }
@@ -215,7 +253,8 @@ export const activitiesSlice = createSlice({
         newLevel: reward.newLevel ?? updatedStats.level,
         newTotalXp: reward.newTotalXp ?? updatedStats.xp,
         newCoins: reward.newCoins ?? updatedStats.coins,
-        currentStreak: reward.streakDays ?? reward.currentStreak ?? updatedStats.currentStreak ?? 1,
+        currentStreak:
+          reward.streakDays ?? reward.currentStreak ?? updatedStats.currentStreak ?? 1,
         leveledUp: Boolean(reward.leveledUp ?? data.levelUp),
         unlockedMedals: reward.unlockedMedals || data.newlyUnlockedItems || [],
         activityTitle: title,
@@ -223,11 +262,51 @@ export const activitiesSlice = createSlice({
     });
     builder.addCase(completeActivity.rejected, (state, action) => {
       state.completingId = null;
-      state.error = action.payload as string;
+      const payload = action.payload as
+        | { status?: number; message?: string }
+        | string
+        | undefined;
+      if (typeof payload === 'object' && payload?.status === 409) {
+        state.conflictNotice =
+          '¡Hábito completado por hoy! Ya registraste este ciclo en el día actual. Vuelve mañana para mantener tu racha.';
+        state.error = null;
+      } else {
+        state.error =
+          typeof payload === 'object'
+            ? payload?.message || 'Error al completar la actividad'
+            : payload || 'Error al completar la actividad';
+      }
     });
   },
 });
 
-export const { setFilters, clearCompletedReward, setSelectedActivity } =
-  activitiesSlice.actions;
+export const {
+  setFilters,
+  clearCompletedReward,
+  clearActivitiesError,
+  clearConflictNotice,
+  setSelectedActivity,
+} = activitiesSlice.actions;
+
+// ==========================================
+// MEMOIZED SELECTORS (createSelector)
+// ==========================================
+const selectActivitiesList = (state: { activities: ActivitiesState }) =>
+  state.activities.activities;
+const selectActivitiesFilters = (state: { activities: ActivitiesState }) =>
+  state.activities.filters;
+const selectCurrentUserId = (state: { auth: { user: { id: string } | null } }) =>
+  state.auth.user?.id;
+
+export const selectFilteredActivitiesMemo = createSelector(
+  [selectActivitiesList, selectActivitiesFilters, selectCurrentUserId],
+  (activities, filters, currentUserId) =>
+    selectFilteredActivities(activities, filters, currentUserId),
+);
+
+export const selectActivitiesSummaryMemo = createSelector(
+  [selectFilteredActivitiesMemo],
+  (filtered) => computeActivitiesSummary(filtered),
+);
+
 export default activitiesSlice.reducer;

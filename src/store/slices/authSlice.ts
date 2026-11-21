@@ -26,6 +26,10 @@ export interface UserProfile extends UserStats {
   username: string;
   email: string;
   avatarUrl?: string | null;
+  equippedThemeId?: string | null;
+  equippedMedalId?: string | null;
+  equippedFrameId?: string | null;
+  equippedTitleId?: string | null;
   equippedMedal?: GamificationCosmetic | null;
   equippedTheme?: GamificationCosmetic | null;
   equippedFrame?: GamificationCosmetic | null;
@@ -48,18 +52,23 @@ export interface AuthState {
 }
 
 /**
- * Pure normalization function that safely extracts gamification stats
- * regardless of whether they are placed at root or nested under `rawUser.stats`.
- * Persists normalized profile to localStorage.
+ * 100% Pure normalization function (ZERO side effects — no localStorage calls).
+ * Safely extracts gamification stats and cosmetic IDs whether placed at root or under `rawUser.stats`.
  */
 export const normalizeUserProfile = (rawUser: any): UserProfile | null => {
   if (!rawUser) return null;
   const stats = rawUser.stats || {};
   const xp = Number(rawUser.xp ?? stats.xp ?? 0);
-  const level = Number(rawUser.level ?? stats.level ?? (xp > 0 ? Math.floor(1 + Math.sqrt(xp / 100)) : 1));
+  const level = Number(
+    rawUser.level ??
+      stats.level ??
+      (xp > 0 ? Math.floor(1 + Math.sqrt(xp / 100)) : 1),
+  );
   const coins = Number(rawUser.coins ?? stats.coins ?? 0);
   const currentStreak = Number(rawUser.currentStreak ?? stats.currentStreak ?? 0);
-  const longestStreak = Number(rawUser.longestStreak ?? stats.longestStreak ?? currentStreak);
+  const longestStreak = Number(
+    rawUser.longestStreak ?? stats.longestStreak ?? currentStreak,
+  );
 
   const nextLevelXp = Number(
     rawUser.nextLevelXp ??
@@ -72,7 +81,8 @@ export const normalizeUserProfile = (rawUser: any): UserProfile | null => {
       (level > 1 ? 100 * Math.pow(level - 1, 2) : 0),
   );
 
-  let progressPercent = rawUser.progressToNextLevelPercent ?? stats.progressToNextLevelPercent;
+  let progressPercent =
+    rawUser.progressToNextLevelPercent ?? stats.progressToNextLevelPercent;
   if (typeof progressPercent !== 'number') {
     const range = nextLevelXp - currentLevelBaseXp;
     progressPercent =
@@ -83,7 +93,12 @@ export const normalizeUserProfile = (rawUser: any): UserProfile | null => {
         : 0;
   }
 
-  const normalized: UserProfile = {
+  const equippedTheme = rawUser.equippedTheme ?? null;
+  const equippedMedal = rawUser.equippedMedal ?? null;
+  const equippedFrame = rawUser.equippedFrame ?? null;
+  const equippedTitle = rawUser.equippedTitle ?? null;
+
+  return {
     id: rawUser.id || '',
     username: rawUser.username || '',
     email: rawUser.email || '',
@@ -99,10 +114,14 @@ export const normalizeUserProfile = (rawUser: any): UserProfile | null => {
     progressPercent,
     xpForNextLevel: nextLevelXp,
     xpCurrentLevel: xp,
-    equippedTheme: rawUser.equippedTheme ?? null,
-    equippedMedal: rawUser.equippedMedal ?? null,
-    equippedFrame: rawUser.equippedFrame ?? null,
-    equippedTitle: rawUser.equippedTitle ?? null,
+    equippedThemeId: rawUser.equippedThemeId ?? equippedTheme?.id ?? null,
+    equippedMedalId: rawUser.equippedMedalId ?? equippedMedal?.id ?? null,
+    equippedFrameId: rawUser.equippedFrameId ?? equippedFrame?.id ?? null,
+    equippedTitleId: rawUser.equippedTitleId ?? equippedTitle?.id ?? null,
+    equippedTheme,
+    equippedMedal,
+    equippedFrame,
+    equippedTitle,
     stats: {
       xp,
       level,
@@ -114,31 +133,30 @@ export const normalizeUserProfile = (rawUser: any): UserProfile | null => {
       progressToNextLevelPercent: progressPercent,
     },
   };
-
-  try {
-    localStorage.setItem('ploty_user', JSON.stringify(normalized));
-  } catch {
-    // Ignore storage quota or access errors in restricted envs
-  }
-
-  return normalized;
 };
 
-const initialToken = localStorage.getItem('ploty_token');
-let initialUser: UserProfile | null = null;
-const cachedUserStr = localStorage.getItem('ploty_user');
-if (cachedUserStr) {
+const readInitialAuthState = (): {
+  token: string | null;
+  user: UserProfile | null;
+} => {
   try {
-    initialUser = normalizeUserProfile(JSON.parse(cachedUserStr));
+    const token = localStorage.getItem('ploty_token');
+    const cachedUserStr = localStorage.getItem('ploty_user');
+    const user = cachedUserStr
+      ? normalizeUserProfile(JSON.parse(cachedUserStr))
+      : null;
+    return { token, user };
   } catch {
-    initialUser = null;
+    return { token: null, user: null };
   }
-}
+};
+
+const initialHydrated = readInitialAuthState();
 
 const initialState: AuthState = {
-  user: initialUser,
-  token: initialToken,
-  isAuthenticated: Boolean(initialToken),
+  user: initialHydrated.user,
+  token: initialHydrated.token,
+  isAuthenticated: Boolean(initialHydrated.token),
   loading: false,
   error: null,
 };
@@ -147,15 +165,17 @@ const initialState: AuthState = {
 export const registerUser = createAsyncThunk(
   'auth/registerUser',
   async (
-    payload: { username: string; email: string; password: string; avatarUrl?: string },
+    payload: {
+      username: string;
+      email: string;
+      password: string;
+      avatarUrl?: string;
+    },
     { rejectWithValue },
   ) => {
     try {
       const response = await api.post('/auth/register', payload);
       const { access_token, user } = response.data;
-      if (access_token) {
-        localStorage.setItem('ploty_token', access_token);
-      }
       return { token: access_token, user: normalizeUserProfile(user) };
     } catch (err: any) {
       const msg = err.response?.data?.message || 'Error registering account';
@@ -173,9 +193,6 @@ export const loginUser = createAsyncThunk(
     try {
       const response = await api.post('/auth/login', payload);
       const { access_token, user } = response.data;
-      if (access_token) {
-        localStorage.setItem('ploty_token', access_token);
-      }
       return { token: access_token, user: normalizeUserProfile(user) };
     } catch (err: any) {
       const msg = err.response?.data?.message || 'Invalid credentials';
@@ -202,8 +219,6 @@ export const authSlice = createSlice({
   initialState,
   reducers: {
     logout: (state) => {
-      localStorage.removeItem('ploty_token');
-      localStorage.removeItem('ploty_user');
       state.user = null;
       state.token = null;
       state.isAuthenticated = false;
@@ -222,6 +237,10 @@ export const authSlice = createSlice({
         currentStreak?: number;
         longestStreak?: number;
         progressToNextLevelPercent?: number;
+        equippedThemeId?: string | null;
+        equippedMedalId?: string | null;
+        equippedFrameId?: string | null;
+        equippedTitleId?: string | null;
         equippedMedal?: GamificationCosmetic | null;
         equippedTheme?: GamificationCosmetic | null;
         equippedFrame?: GamificationCosmetic | null;
@@ -281,16 +300,14 @@ export const authSlice = createSlice({
     builder.addCase(fetchUserProfile.rejected, (state, action) => {
       state.loading = false;
       state.error = action.payload as string;
-      // If unauthorized, clean up
       if (state.error?.toLowerCase().includes('unauthorized')) {
         state.isAuthenticated = false;
         state.token = null;
-        localStorage.removeItem('ploty_token');
-        localStorage.removeItem('ploty_user');
+        state.user = null;
       }
     });
 
-    // Reactive HUD update when an activity completes (completeActivity.fulfilled)
+    // Reactive HUD update when an activity completes
     builder.addMatcher(
       (action) => action.type === 'activities/completeActivity/fulfilled',
       (state, action: any) => {
@@ -298,7 +315,10 @@ export const authSlice = createSlice({
         if (!data || !state.user) return;
 
         if (data.updatedUser) {
-          state.user = normalizeUserProfile({ ...state.user, ...data.updatedUser });
+          state.user = normalizeUserProfile({
+            ...state.user,
+            ...data.updatedUser,
+          });
           return;
         }
 
@@ -307,11 +327,19 @@ export const authSlice = createSlice({
         const xpEarned = Number(rewards.xpEarned ?? rewards.xpGained ?? 0);
         const coinsEarned = Number(rewards.coinsEarned ?? rewards.coinsGained ?? 0);
 
-        const newXp = Number(updatedStats?.xp ?? (state.user.xp + xpEarned));
-        const newCoins = Number(updatedStats?.coins ?? (state.user.coins + coinsEarned));
-        const newLevel = Number(updatedStats?.level ?? data.newLevel ?? state.user.level);
-        const newStreak = Number(updatedStats?.currentStreak ?? state.user.currentStreak);
-        const newLongestStreak = Number(updatedStats?.longestStreak ?? state.user.longestStreak);
+        const newXp = Number(updatedStats?.xp ?? state.user.xp + xpEarned);
+        const newCoins = Number(
+          updatedStats?.coins ?? state.user.coins + coinsEarned,
+        );
+        const newLevel = Number(
+          updatedStats?.level ?? data.newLevel ?? state.user.level,
+        );
+        const newStreak = Number(
+          updatedStats?.currentStreak ?? state.user.currentStreak,
+        );
+        const newLongestStreak = Number(
+          updatedStats?.longestStreak ?? state.user.longestStreak,
+        );
 
         state.user = normalizeUserProfile({
           ...state.user,
@@ -325,19 +353,50 @@ export const authSlice = createSlice({
       },
     );
 
-    // Reactive HUD update when equipping cosmetic (equipItem.fulfilled)
+    // Reactive HUD update when equipping any of the 4 cosmetic slots
     builder.addMatcher(
       (action) => action.type === 'gamification/equipItem/fulfilled',
       (state, action: any) => {
         const payload = action.payload?.payload;
         if (!state.user || !payload) return;
 
+        const returnedUser = action.payload?.data?.user;
+        if (returnedUser) {
+          state.user = normalizeUserProfile({
+            ...state.user,
+            ...returnedUser,
+          });
+          return;
+        }
+
         if (payload.type === 'THEME') {
           const item = action.payload?.data?.equippedTheme || { id: payload.itemId };
-          state.user = normalizeUserProfile({ ...state.user, equippedTheme: item });
+          state.user = normalizeUserProfile({
+            ...state.user,
+            equippedThemeId: item.id,
+            equippedTheme: item,
+          });
         } else if (payload.type === 'MEDAL') {
           const item = action.payload?.data?.equippedMedal || { id: payload.itemId };
-          state.user = normalizeUserProfile({ ...state.user, equippedMedal: item });
+          state.user = normalizeUserProfile({
+            ...state.user,
+            equippedMedalId: item.id,
+            equippedMedal: item,
+          });
+        } else if (payload.type === 'AVATAR_FRAME' || payload.type === 'FRAME') {
+          const item = action.payload?.data?.equippedFrame || { id: payload.itemId };
+          state.user = normalizeUserProfile({
+            ...state.user,
+            equippedFrameId: item.id,
+            equippedFrame: item,
+          });
+        } else if (payload.type === 'TITLE') {
+          const item = action.payload?.data?.equippedTitle || { id: payload.itemId };
+          state.user = normalizeUserProfile({
+            ...state.user,
+            equippedTitleId: item.id,
+            equippedTitle: item,
+          });
         }
       },
     );

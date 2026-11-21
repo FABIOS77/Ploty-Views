@@ -24,7 +24,6 @@ import {
   fetchLeaderboard,
   setPreviewTheme,
   clearPreviewTheme,
-  equipLocalCosmetic,
   type CatalogItem,
 } from '../../store/slices/gamificationSlice';
 import { syncUserStats, fetchUserProfile } from '../../store/slices/authSlice';
@@ -67,7 +66,10 @@ export const ShopPage: React.FC = () => {
     [catalog],
   );
   const cosmeticsList = useMemo(
-    () => catalog.filter((i) => i.type === 'AVATAR_FRAME' || i.type === 'TITLE'),
+    () =>
+      catalog.filter(
+        (i) => i.type === 'AVATAR_FRAME' || i.type === 'FRAME' || i.type === 'TITLE',
+      ),
     [catalog],
   );
 
@@ -90,31 +92,36 @@ export const ShopPage: React.FC = () => {
   };
 
   const handleEquip = async (item: CatalogItem) => {
-    if (item.type === 'THEME' || item.type === 'MEDAL') {
-      if (item.type === 'THEME') {
+    const validType = item.type as
+      | 'THEME'
+      | 'MEDAL'
+      | 'AVATAR_FRAME'
+      | 'FRAME'
+      | 'TITLE';
+
+    if (validType === 'THEME') {
+      dispatch(clearPreviewTheme());
+    }
+
+    const res = await dispatch(
+      equipItem({ itemId: item.id, type: validType }),
+    );
+
+    if (equipItem.fulfilled.match(res)) {
+      if (validType === 'THEME') {
         dispatch(clearPreviewTheme());
+        dispatch(syncUserStats({ equippedThemeId: item.id, equippedTheme: item }));
+        const tokens = resolveThemeTokens(item);
+        applyThemeToDocument(tokens);
+      } else if (validType === 'MEDAL') {
+        dispatch(syncUserStats({ equippedMedalId: item.id, equippedMedal: item }));
+      } else if (validType === 'AVATAR_FRAME' || validType === 'FRAME') {
+        dispatch(syncUserStats({ equippedFrameId: item.id, equippedFrame: item }));
+      } else if (validType === 'TITLE') {
+        dispatch(syncUserStats({ equippedTitleId: item.id, equippedTitle: item }));
       }
-      const res = await dispatch(
-        equipItem({ itemId: item.id, type: item.type }),
-      );
-      if (equipItem.fulfilled.match(res)) {
-        if (item.type === 'THEME') {
-          dispatch(clearPreviewTheme());
-          dispatch(syncUserStats({ equippedTheme: item }));
-          const tokens = resolveThemeTokens(item);
-          applyThemeToDocument(tokens);
-        } else if (item.type === 'MEDAL') {
-          dispatch(syncUserStats({ equippedMedal: item }));
-        }
-        dispatch(fetchCatalog());
-        dispatch(fetchUserProfile());
-      }
-    } else if (item.type === 'AVATAR_FRAME') {
-      dispatch(equipLocalCosmetic({ item, type: 'AVATAR_FRAME' }));
-      dispatch(syncUserStats({ equippedFrame: item }));
-    } else if (item.type === 'TITLE') {
-      dispatch(equipLocalCosmetic({ item, type: 'TITLE' }));
-      dispatch(syncUserStats({ equippedTitle: item }));
+      dispatch(fetchCatalog());
+      dispatch(fetchUserProfile());
     }
   };
 
@@ -425,7 +432,7 @@ export const ShopPage: React.FC = () => {
       {activeTab === 'cosmetics' && (
         <StaggerContainer className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {cosmeticsList.map((item) => {
-            const isFrame = item.type === 'AVATAR_FRAME';
+            const isFrame = item.type === 'AVATAR_FRAME' || item.type === 'FRAME';
             const userLevel = currentUser?.level || 1;
             const userCoins = currentUser?.coins || 0;
             const levelLocked = userLevel < item.unlockLevel;

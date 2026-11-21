@@ -4,10 +4,12 @@ import {
   FolderKanban,
   Plus,
   Users,
+  User,
   CheckCircle2,
   Sparkles,
   X,
   Palette,
+  AlertCircle,
 } from 'lucide-react';
 import { useAppDispatch, useAppSelector } from '../../store/hooks';
 import {
@@ -18,6 +20,7 @@ import {
 import { BentoSpringCard } from '../../common/motion/BentoSpringCard';
 import { StaggerContainer, StaggerItem } from '../../common/motion/StaggerList';
 import { springConfig } from '../../common/motion/motion-skills';
+import { isErr, validateProjectForm, type FieldErrors } from '../../common/fp';
 import { ProjectDetailModal } from './ProjectDetailModal';
 
 const COLOR_PRESETS = [
@@ -34,7 +37,7 @@ const ICON_PRESETS = ['🚀', '🎯', '⚡', '🔥', '💡', '💎', '🛡️', 
 
 export const ProjectsPage: React.FC = () => {
   const dispatch = useAppDispatch();
-  const { projects, loading, selectedProject } = useAppSelector(
+  const { projects, loading, error, selectedProject } = useAppSelector(
     (state) => state.projects,
   );
 
@@ -43,6 +46,8 @@ export const ProjectsPage: React.FC = () => {
   const [description, setDescription] = useState('');
   const [colorHex, setColorHex] = useState(COLOR_PRESETS[0]);
   const [icon, setIcon] = useState(ICON_PRESETS[0]);
+  const [isTeamProject, setIsTeamProject] = useState(false);
+  const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
 
   useEffect(() => {
     dispatch(fetchProjects());
@@ -50,20 +55,29 @@ export const ProjectsPage: React.FC = () => {
 
   const handleCreateSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!name.trim()) return;
+    const validation = validateProjectForm({ name, description });
+    if (isErr(validation)) {
+      setFieldErrors(validation.error);
+      return;
+    }
 
-    await dispatch(
+    setFieldErrors({});
+    const res = await dispatch(
       createProject({
-        name: name.trim(),
-        description: description.trim() || undefined,
+        name: validation.value.name,
+        description: validation.value.description,
         colorHex,
         icon,
+        isTeamProject,
       }),
     );
 
-    setName('');
-    setDescription('');
-    setIsCreateOpen(false);
+    if (createProject.fulfilled.match(res)) {
+      setName('');
+      setDescription('');
+      setIsTeamProject(false);
+      setIsCreateOpen(false);
+    }
   };
 
   return (
@@ -81,23 +95,34 @@ export const ProjectsPage: React.FC = () => {
             <span>Módulo de Proyectos</span>
           </div>
           <h2 className="text-2xl sm:text-3xl font-black tracking-tight">
-            Proyectos Colaborativos Bento
+            Proyectos Colaborativos & Individuales
           </h2>
           <p className="text-sm text-ploty-sage/80">
-            Organiza tus actividades grupales, asigna roles de equipo y monitoriza el progreso global.
+            Organiza tus metas personales o grupales, asigna roles de equipo y monitoriza el progreso real incluyendo hábitos recurrentes.
           </p>
         </div>
 
         <motion.button
           whileHover={{ scale: 1.05 }}
           whileTap={{ scale: 0.95 }}
-          onClick={() => setIsCreateOpen(true)}
+          onClick={() => {
+            setFieldErrors({});
+            setIsCreateOpen(true);
+          }}
           className="flex items-center gap-2 px-5 py-3 rounded-2xl bg-ploty-periwinkle hover:bg-ploty-periwinkle/90 text-ploty-white font-black text-sm shadow-tactile-sm transition-all flex-shrink-0 cursor-pointer"
         >
           <Plus className="w-4 h-4" />
           <span>Nuevo Proyecto</span>
         </motion.button>
       </motion.div>
+
+      {/* Backend Error Banner */}
+      {error && (
+        <div className="p-4 rounded-2xl bg-ploty-coral/15 border-2 border-ploty-coral/40 text-ploty-coral flex items-center gap-2.5 text-xs font-black">
+          <AlertCircle className="w-4 h-4 shrink-0" />
+          <span>{error}</span>
+        </div>
+      )}
 
       {/* Projects Grid */}
       {loading && projects.length === 0 ? (
@@ -111,11 +136,11 @@ export const ProjectsPage: React.FC = () => {
           </div>
           <h3 className="text-lg font-black">Aún no tienes proyectos creados</h3>
           <p className="text-xs text-ploty-charcoal/70 max-w-md mx-auto">
-            Crea tu primer proyecto para agrupar actividades, invitar colaboradores y ganar multiplicadores de XP grupal.
+            Crea tu primer proyecto para agrupar actividades, invitar colaboradores y seguir tu progreso.
           </p>
           <button
             onClick={() => setIsCreateOpen(true)}
-            className="px-4 py-2.5 rounded-2xl bg-ploty-periwinkle text-ploty-white text-xs font-black shadow-sm"
+            className="px-4 py-2.5 rounded-2xl bg-ploty-periwinkle text-ploty-white text-xs font-black shadow-sm cursor-pointer"
           >
             Crear Primer Proyecto
           </button>
@@ -123,19 +148,24 @@ export const ProjectsPage: React.FC = () => {
       ) : (
         <StaggerContainer className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {projects.map((project) => {
-            const progress = project.summary?.progressPercent ?? 0;
+            const summary = project.progressSummary ?? project.summary;
+            const progress = summary?.progressPercent ?? 0;
+            const totalActivities =
+              summary?.totalCount ?? summary?.total ?? project._count?.activities ?? 0;
+            const memberCount = project.memberCount ?? project.members?.length ?? 0;
+
             return (
               <StaggerItem key={project.id}>
                 <BentoSpringCard
                   onClick={() => dispatch(setSelectedProject(project))}
-                  className="bg-ploty-white text-ploty-charcoal p-6 rounded-3xl shadow-tactile border-2 border-ploty-charcoal/10 hover:border-ploty-periwinkle flex flex-col justify-between h-full group"
+                  className="bg-ploty-white text-ploty-charcoal p-6 rounded-3xl shadow-tactile border-2 border-ploty-charcoal/10 hover:border-ploty-periwinkle flex flex-col justify-between h-full group cursor-pointer"
                 >
                   <div className="space-y-4">
                     {/* Card Header with Color Accent & Icon */}
                     <div className="flex items-start justify-between gap-3">
                       <div className="flex items-center gap-3">
                         <div
-                          className="w-12 h-12 rounded-2xl flex items-center justify-center text-2xl shadow-sm border border-ploty-charcoal/10"
+                          className="w-12 h-12 rounded-2xl flex items-center justify-center text-2xl shadow-sm border border-ploty-charcoal/10 shrink-0"
                           style={{ backgroundColor: `${project.colorHex}25` }}
                         >
                           {project.icon || '🚀'}
@@ -144,14 +174,33 @@ export const ProjectsPage: React.FC = () => {
                           <h4 className="font-black text-base group-hover:text-ploty-periwinkle transition-colors line-clamp-1">
                             {project.name}
                           </h4>
-                          <span className="text-[11px] font-bold text-ploty-charcoal/60 uppercase tracking-wider">
-                            {project._count?.activities ?? project.summary?.total ?? 0} Actividades
-                          </span>
+                          <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+                            <span className="text-[11px] font-bold text-ploty-charcoal/60 uppercase tracking-wider">
+                              {totalActivities} Actividades
+                            </span>
+                            <span
+                              className={`inline-flex items-center gap-1 text-[10px] font-black uppercase px-2 py-0.5 rounded-lg ${
+                                project.isTeamProject
+                                  ? 'bg-ploty-periwinkle/15 text-ploty-periwinkle'
+                                  : 'bg-ploty-sage/40 text-ploty-charcoal/70'
+                              }`}
+                            >
+                              {project.isTeamProject ? (
+                                <>
+                                  <Users className="w-3 h-3" /> Equipo
+                                </>
+                              ) : (
+                                <>
+                                  <User className="w-3 h-3" /> Individual
+                                </>
+                              )}
+                            </span>
+                          </div>
                         </div>
                       </div>
 
                       <div
-                        className="w-3.5 h-3.5 rounded-full border border-ploty-charcoal/20"
+                        className="w-3.5 h-3.5 rounded-full border border-ploty-charcoal/20 shrink-0"
                         style={{ backgroundColor: project.colorHex }}
                         title="Color del proyecto"
                       />
@@ -166,7 +215,7 @@ export const ProjectsPage: React.FC = () => {
                       <div className="flex justify-between items-center text-[11px] font-black">
                         <span className="flex items-center gap-1 text-ploty-charcoal/70">
                           <CheckCircle2 className="w-3.5 h-3.5 text-ploty-coral" />
-                          Progreso
+                          Progreso ({summary?.completed ?? 0}/{totalActivities})
                         </span>
                         <span className="text-ploty-periwinkle">{progress}%</span>
                       </div>
@@ -184,40 +233,44 @@ export const ProjectsPage: React.FC = () => {
 
                   {/* Card Footer: Members Avatars */}
                   <div className="mt-5 pt-4 border-t border-ploty-charcoal/10 flex items-center justify-between">
-                    <div className="flex items-center -space-x-2">
-                      {project.members && project.members.length > 0 ? (
-                        project.members.slice(0, 4).map((member) => {
-                          const username = member.user?.username ?? (member as any).username ?? 'Usuario';
-                          const avatarUrl = member.user?.avatarUrl ?? (member as any).avatarUrl;
+                    <div className="flex items-center gap-2">
+                      <div className="flex items-center -space-x-2">
+                        {project.members && project.members.length > 0 ? (
+                          project.members.slice(0, 4).map((member) => {
+                            const username =
+                              member.user?.username ??
+                              (member as any).username ??
+                              'Usuario';
+                            const avatarUrl =
+                              member.user?.avatarUrl ?? (member as any).avatarUrl;
 
-                          return (
-                            <div
-                              key={member.id}
-                              className="w-7 h-7 rounded-full border-2 border-ploty-white bg-ploty-periwinkle/30 flex items-center justify-center text-[10px] font-black text-ploty-charcoal overflow-hidden shadow-sm"
-                              title={username}
-                            >
-                              {avatarUrl ? (
-                                <img
-                                  src={avatarUrl}
-                                  alt={username}
-                                  className="w-full h-full object-cover"
-                                />
-                              ) : (
-                                (username || 'U').slice(0, 2).toUpperCase()
-                              )}
-                            </div>
-                          );
-                        })
-                      ) : (
-                        <div className="w-7 h-7 rounded-full border-2 border-ploty-white bg-ploty-sage/40 flex items-center justify-center text-xs">
-                          <Users className="w-3.5 h-3.5 text-ploty-charcoal/60" />
-                        </div>
-                      )}
-                      {(project.members?.length || 0) > 4 && (
-                        <span className="text-[10px] font-black pl-3 text-ploty-charcoal/60">
-                          +{(project.members?.length || 0) - 4}
-                        </span>
-                      )}
+                            return (
+                              <div
+                                key={member.id}
+                                className="w-7 h-7 rounded-full border-2 border-ploty-white bg-ploty-periwinkle/30 flex items-center justify-center text-[10px] font-black text-ploty-charcoal overflow-hidden shadow-sm"
+                                title={username}
+                              >
+                                {avatarUrl ? (
+                                  <img
+                                    src={avatarUrl}
+                                    alt={username}
+                                    className="w-full h-full object-cover"
+                                  />
+                                ) : (
+                                  (username || 'U').slice(0, 2).toUpperCase()
+                                )}
+                              </div>
+                            );
+                          })
+                        ) : (
+                          <div className="w-7 h-7 rounded-full border-2 border-ploty-white bg-ploty-sage/40 flex items-center justify-center text-xs">
+                            <Users className="w-3.5 h-3.5 text-ploty-charcoal/60" />
+                          </div>
+                        )}
+                      </div>
+                      <span className="text-[11px] font-bold text-ploty-charcoal/60">
+                        {memberCount} {memberCount === 1 ? 'miembro' : 'miembros'}
+                      </span>
                     </div>
 
                     <span className="text-[11px] font-black text-ploty-periwinkle group-hover:underline flex items-center gap-1">
@@ -240,7 +293,7 @@ export const ProjectsPage: React.FC = () => {
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.95 }}
               transition={springConfig.tactile}
-              className="bg-ploty-white text-ploty-charcoal w-full max-w-lg rounded-3xl shadow-tactile p-6 sm:p-8 space-y-6"
+              className="bg-ploty-white text-ploty-charcoal w-full max-w-lg rounded-3xl shadow-tactile p-6 sm:p-8 space-y-6 max-h-[90vh] overflow-y-auto"
             >
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
@@ -251,83 +304,140 @@ export const ProjectsPage: React.FC = () => {
                 </div>
                 <button
                   onClick={() => setIsCreateOpen(false)}
-                  className="p-1.5 rounded-xl hover:bg-ploty-sage/30 text-ploty-charcoal/60"
+                  className="p-1.5 rounded-xl hover:bg-ploty-sage/30 text-ploty-charcoal/60 cursor-pointer"
                 >
                   <X className="w-5 h-5" />
                 </button>
               </div>
 
-              <form onSubmit={handleCreateSubmit} className="space-y-4">
+              <form onSubmit={handleCreateSubmit} noValidate className="space-y-4">
                 <div>
-                  <label className="block text-xs font-black uppercase tracking-wider text-ploty-charcoal mb-1.5">
+                  <label className="block text-xs font-black uppercase tracking-wider text-ploty-charcoal mb-1">
                     Nombre del Proyecto *
                   </label>
                   <input
                     type="text"
-                    required
                     value={name}
-                    onChange={(e) => setName(e.target.value)}
-                    placeholder="ej. Sprint de Funcionalidades"
-                    className="w-full px-4 py-2.5 rounded-2xl bg-ploty-sage/20 border-2 border-ploty-charcoal/10 focus:border-ploty-periwinkle focus:outline-none text-sm font-medium"
+                    onChange={(e) => {
+                      setName(e.target.value);
+                      if (fieldErrors.name) setFieldErrors({ ...fieldErrors, name: '' });
+                    }}
+                    placeholder="ej. Lanzamiento Ploty v2"
+                    className={`w-full px-4 py-2.5 rounded-2xl bg-ploty-sage/20 border-2 focus:outline-none text-sm font-medium ${
+                      fieldErrors.name
+                        ? 'border-ploty-coral'
+                        : 'border-ploty-charcoal/10 focus:border-ploty-periwinkle'
+                    }`}
                   />
+                  {fieldErrors.name && (
+                    <p className="mt-1 text-[11px] font-bold text-ploty-coral">
+                      {fieldErrors.name}
+                    </p>
+                  )}
                 </div>
 
                 <div>
-                  <label className="block text-xs font-black uppercase tracking-wider text-ploty-charcoal mb-1.5">
-                    Descripción
+                  <label className="block text-xs font-black uppercase tracking-wider text-ploty-charcoal mb-1">
+                    Descripción (Opcional, máx. 500 caracteres)
                   </label>
                   <textarea
-                    rows={2}
+                    rows={3}
                     value={description}
-                    onChange={(e) => setDescription(e.target.value)}
-                    placeholder="Objetivo y alcances del proyecto..."
-                    className="w-full px-4 py-2 rounded-2xl bg-ploty-sage/20 border-2 border-ploty-charcoal/10 focus:border-ploty-periwinkle focus:outline-none text-xs font-medium resize-none"
+                    onChange={(e) => {
+                      setDescription(e.target.value);
+                      if (fieldErrors.description)
+                        setFieldErrors({ ...fieldErrors, description: '' });
+                    }}
+                    placeholder="Objetivos, hitos y alcance del proyecto..."
+                    className={`w-full px-4 py-2.5 rounded-2xl bg-ploty-sage/20 border-2 focus:outline-none text-xs font-medium resize-none ${
+                      fieldErrors.description
+                        ? 'border-ploty-coral'
+                        : 'border-ploty-charcoal/10 focus:border-ploty-periwinkle'
+                    }`}
                   />
+                  {fieldErrors.description && (
+                    <p className="mt-1 text-[11px] font-bold text-ploty-coral">
+                      {fieldErrors.description}
+                    </p>
+                  )}
                 </div>
 
-                {/* Icon Selector */}
+                {/* Toggle Individual / En Equipo */}
                 <div>
                   <label className="block text-xs font-black uppercase tracking-wider text-ploty-charcoal mb-1.5">
-                    Ícono del Proyecto
+                    Tipo de Proyecto
                   </label>
-                  <div className="flex gap-2 flex-wrap">
-                    {ICON_PRESETS.map((ic) => (
-                      <button
-                        key={ic}
-                        type="button"
-                        onClick={() => setIcon(ic)}
-                        className={`w-10 h-10 rounded-2xl text-xl flex items-center justify-center border-2 transition-all ${
-                          icon === ic
-                            ? 'border-ploty-periwinkle bg-ploty-periwinkle/15 scale-110 shadow-sm'
-                            : 'border-ploty-charcoal/10 hover:border-ploty-charcoal/30'
-                        }`}
-                      >
-                        {ic}
-                      </button>
-                    ))}
+                  <div className="grid grid-cols-2 gap-3">
+                    <button
+                      type="button"
+                      onClick={() => setIsTeamProject(false)}
+                      className={`p-3 rounded-2xl border-2 font-black text-xs flex items-center justify-center gap-2 transition-all cursor-pointer ${
+                        !isTeamProject
+                          ? 'bg-ploty-charcoal text-ploty-white border-ploty-charcoal shadow-sm'
+                          : 'bg-ploty-sage/20 text-ploty-charcoal/70 border-ploty-charcoal/10'
+                      }`}
+                    >
+                      <User className="w-4 h-4" />
+                      <span>Proyecto Individual</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setIsTeamProject(true)}
+                      className={`p-3 rounded-2xl border-2 font-black text-xs flex items-center justify-center gap-2 transition-all cursor-pointer ${
+                        isTeamProject
+                          ? 'bg-ploty-periwinkle text-ploty-white border-ploty-periwinkle shadow-sm'
+                          : 'bg-ploty-sage/20 text-ploty-charcoal/70 border-ploty-charcoal/10'
+                      }`}
+                    >
+                      <Users className="w-4 h-4" />
+                      <span>Proyecto en Equipo</span>
+                    </button>
                   </div>
                 </div>
 
-                {/* Color Selector */}
-                <div>
-                  <label className="block text-xs font-black uppercase tracking-wider text-ploty-charcoal mb-1.5 flex items-center gap-1.5">
-                    <Palette className="w-3.5 h-3.5 text-ploty-coral" />
-                    Color de Identidad
-                  </label>
-                  <div className="flex gap-2.5 flex-wrap">
-                    {COLOR_PRESETS.map((color) => (
-                      <button
-                        key={color}
-                        type="button"
-                        onClick={() => setColorHex(color)}
-                        style={{ backgroundColor: color }}
-                        className={`w-8 h-8 rounded-full border-2 transition-transform ${
-                          colorHex === color
-                            ? 'border-ploty-charcoal scale-125 shadow-tactile-sm'
-                            : 'border-ploty-white hover:scale-110'
-                        }`}
-                      />
-                    ))}
+                {/* Icon & Color Presets */}
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-xs font-black uppercase tracking-wider text-ploty-charcoal mb-1.5">
+                      Ícono
+                    </label>
+                    <div className="flex flex-wrap gap-1.5">
+                      {ICON_PRESETS.map((ic) => (
+                        <button
+                          key={ic}
+                          type="button"
+                          onClick={() => setIcon(ic)}
+                          className={`w-9 h-9 rounded-xl text-lg flex items-center justify-center border-2 transition-all cursor-pointer ${
+                            icon === ic
+                              ? 'border-ploty-periwinkle bg-ploty-periwinkle/15 scale-105'
+                              : 'border-ploty-charcoal/10 bg-ploty-sage/10'
+                          }`}
+                        >
+                          {ic}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="flex items-center gap-1 text-xs font-black uppercase tracking-wider text-ploty-charcoal mb-1.5">
+                      <Palette className="w-3.5 h-3.5" /> Color
+                    </label>
+                    <div className="flex flex-wrap gap-2">
+                      {COLOR_PRESETS.map((c) => (
+                        <button
+                          key={c}
+                          type="button"
+                          onClick={() => setColorHex(c)}
+                          className={`w-7 h-7 rounded-full border-2 transition-transform cursor-pointer ${
+                            colorHex === c
+                              ? 'border-ploty-charcoal scale-115 shadow-sm'
+                              : 'border-transparent'
+                          }`}
+                          style={{ backgroundColor: c }}
+                        />
+                      ))}
+                    </div>
                   </div>
                 </div>
 
@@ -335,15 +445,15 @@ export const ProjectsPage: React.FC = () => {
                   <button
                     type="button"
                     onClick={() => setIsCreateOpen(false)}
-                    className="px-4 py-2.5 rounded-2xl border-2 border-ploty-charcoal/10 font-bold text-xs hover:bg-ploty-sage/20"
+                    className="px-4 py-2.5 rounded-2xl border-2 border-ploty-charcoal/10 font-bold text-xs hover:bg-ploty-sage/20 cursor-pointer"
                   >
                     Cancelar
                   </button>
                   <button
                     type="submit"
-                    className="px-5 py-2.5 rounded-2xl bg-ploty-periwinkle text-ploty-white font-black text-xs shadow-tactile-sm hover:opacity-90"
+                    className="px-5 py-2.5 rounded-2xl bg-ploty-periwinkle text-ploty-white font-black text-xs shadow-tactile-sm hover:opacity-90 cursor-pointer"
                   >
-                    Guardar Proyecto
+                    Crear Proyecto
                   </button>
                 </div>
               </form>
@@ -352,7 +462,7 @@ export const ProjectsPage: React.FC = () => {
         )}
       </AnimatePresence>
 
-      {/* Selected Project Detail Modal */}
+      {/* Project Detail Modal */}
       {selectedProject && (
         <ProjectDetailModal
           project={selectedProject}

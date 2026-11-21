@@ -5,6 +5,7 @@ import { Sparkles, LogIn, Flame, Trophy, Coins, AlertCircle } from 'lucide-react
 import { useAppDispatch, useAppSelector } from '../../store/hooks';
 import { loginUser, clearAuthError } from '../../store/slices/authSlice';
 import { springConfig } from '../../common/motion/motion-skills';
+import { isErr, validateLoginForm, type FieldErrors } from '../../common/fp';
 
 export const LoginPage: React.FC = () => {
   const dispatch = useAppDispatch();
@@ -13,6 +14,7 @@ export const LoginPage: React.FC = () => {
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
 
   useEffect(() => {
     if (isAuthenticated) {
@@ -25,8 +27,13 @@ export const LoginPage: React.FC = () => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!email || !password) return;
-    dispatch(loginUser({ email, password }));
+    const validation = validateLoginForm({ email, password });
+    if (isErr(validation)) {
+      setFieldErrors(validation.error);
+      return;
+    }
+    setFieldErrors({});
+    dispatch(loginUser(validation.value));
   };
 
   return (
@@ -75,7 +82,9 @@ export const LoginPage: React.FC = () => {
               <Trophy className="w-5 h-5 text-ploty-periwinkle flex-shrink-0" />
               <div>
                 <p className="text-xs font-bold">Arquitectura Funcional Pura</p>
-                <p className="text-[11px] text-ploty-white/60">Transformaciones inmutables de tareas</p>
+                <p className="text-[11px] text-ploty-white/60">
+                  Transformaciones inmutables y validadores Result&lt;T, E&gt;
+                </p>
               </div>
             </div>
           </div>
@@ -105,19 +114,30 @@ export const LoginPage: React.FC = () => {
               </motion.div>
             )}
 
-            <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+            <form onSubmit={handleSubmit} noValidate className="flex flex-col gap-4">
               <div>
                 <label className="block text-xs font-black uppercase tracking-wider text-ploty-charcoal/70 mb-1.5">
                   Correo Electrónico
                 </label>
                 <input
                   type="email"
-                  required
                   value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  placeholder="ejemplo@ploty.app"
-                  className="w-full px-4 py-3 rounded-2xl bg-ploty-sage/20 border-2 border-ploty-charcoal/10 focus:border-ploty-periwinkle focus:outline-none font-medium text-sm transition-all text-ploty-charcoal"
+                  onChange={(e) => {
+                    setEmail(e.target.value);
+                    if (fieldErrors.email) setFieldErrors({ ...fieldErrors, email: '' });
+                  }}
+                  placeholder="demo@ploty.app"
+                  className={`w-full px-4 py-3 rounded-2xl bg-ploty-sage/20 border-2 focus:outline-none font-medium text-sm transition-all text-ploty-charcoal ${
+                    fieldErrors.email
+                      ? 'border-ploty-coral'
+                      : 'border-ploty-charcoal/10 focus:border-ploty-periwinkle'
+                  }`}
                 />
+                {fieldErrors.email && (
+                  <p className="mt-1 text-[11px] font-bold text-ploty-coral">
+                    {fieldErrors.email}
+                  </p>
+                )}
               </div>
 
               <div>
@@ -126,12 +146,23 @@ export const LoginPage: React.FC = () => {
                 </label>
                 <input
                   type="password"
-                  required
                   value={password}
-                  onChange={(e) => setPassword(e.target.value)}
+                  onChange={(e) => {
+                    setPassword(e.target.value);
+                    if (fieldErrors.password) setFieldErrors({ ...fieldErrors, password: '' });
+                  }}
                   placeholder="••••••••"
-                  className="w-full px-4 py-3 rounded-2xl bg-ploty-sage/20 border-2 border-ploty-charcoal/10 focus:border-ploty-periwinkle focus:outline-none font-medium text-sm transition-all text-ploty-charcoal"
+                  className={`w-full px-4 py-3 rounded-2xl bg-ploty-sage/20 border-2 focus:outline-none font-medium text-sm transition-all text-ploty-charcoal ${
+                    fieldErrors.password
+                      ? 'border-ploty-coral'
+                      : 'border-ploty-charcoal/10 focus:border-ploty-periwinkle'
+                  }`}
                 />
+                {fieldErrors.password && (
+                  <p className="mt-1 text-[11px] font-bold text-ploty-coral">
+                    {fieldErrors.password}
+                  </p>
+                )}
               </div>
 
               <motion.button
@@ -154,7 +185,11 @@ export const LoginPage: React.FC = () => {
             </form>
           </div>
 
-          <div className="mt-8 pt-4 border-t border-ploty-charcoal/10 text-center">
+          <div className="mt-8 pt-4 border-t border-ploty-charcoal/10 text-center space-y-2">
+            <p className="text-[11px] text-ploty-charcoal/60">
+              Cuenta demo: <span className="font-black text-ploty-charcoal">demo@ploty.app</span> /{' '}
+              <span className="font-black text-ploty-charcoal">Demo1234!</span>
+            </p>
             <p className="text-xs text-ploty-charcoal/70">
               ¿No tienes cuenta de jugador?{' '}
               <Link

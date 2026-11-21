@@ -32,10 +32,10 @@ export const NavbarHUD: React.FC = () => {
         )
       : 0);
 
-  // Determine active frame and title (from gamificationSlice or user object)
-  const activeFrame = equippedFrame || user.equippedFrame;
-  const activeTitle = equippedTitle || user.equippedTitle;
-  const activeMedal = equippedMedal || user.equippedMedal;
+  // Determine active frame, title and medal (prefer user profile synced from backend, fallback gamificationSlice)
+  const activeFrame = user.equippedFrame || equippedFrame;
+  const activeTitle = user.equippedTitle || equippedTitle;
+  const activeMedal = user.equippedMedal || equippedMedal;
 
   return (
     <header className="sticky top-0 z-40 w-full px-4 sm:px-6 py-2.5 bg-[#1E1F28] text-white border-b-2 border-[#12131A] shadow-[0_4px_16px_rgba(0,0,0,0.3)] transition-colors">

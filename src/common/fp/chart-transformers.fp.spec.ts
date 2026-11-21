@@ -1,15 +1,18 @@
 import { describe, it, expect } from 'vitest';
 import {
+  buildConsistencyHeatmap,
+  buildPlayerRadarMetrics,
+  calculateEfficiencyScore,
+  computeProjectComparisonMatrix,
+  filterAndSortActionProgress,
+  normalizeRecurrenceVsSingle,
+  serializeReportToCsv,
   transformDailyTrendForChart,
   transformPriorityBreakdownForChart,
   transformStatusDistributionForChart,
-  normalizeRecurrenceVsSingle,
-  calculateEfficiencyScore,
-  filterAndSortActionProgress,
-  computeProjectComparisonMatrix,
-  type RawDailyTrendPoint,
   type ActionProgressItem,
   type ProjectProgressItem,
+  type RawDailyTrendPoint,
 } from './chart-transformers.fp';
 
 describe('Chart FP Transformers (chart-transformers.fp.ts)', () => {
@@ -278,6 +281,110 @@ describe('Chart FP Transformers (chart-transformers.fp.ts)', () => {
       expect(matrix.projects.length).toBe(0);
       expect(matrix.averageProgress).toBe(0);
       expect(matrix.topProjectName).toBe('Ninguno');
+    });
+  });
+
+  describe('buildConsistencyHeatmap', () => {
+    it('builds a 30-day grid with intensity levels 0..4 without mutating input', () => {
+      const refDate = new Date('2026-11-21T12:00:00.000Z');
+      const series: readonly RawDailyTrendPoint[] = Object.freeze([
+        { date: '2026-11-21', completedCount: 4, xpEarned: 250 },
+        { date: '2026-11-20', completedCount: 2, xpEarned: 80 },
+        { date: '2026-11-19', completedCount: 1, xpEarned: 40 },
+      ]);
+
+      const cells = buildConsistencyHeatmap(series, 30, refDate);
+      expect(cells).toHaveLength(30);
+      expect(cells[29].date).toBe('2026-11-21');
+      expect(cells[29].intensity).toBe(4);
+      expect(cells[28].intensity).toBe(2);
+      expect(cells[27].intensity).toBe(1);
+      expect(cells[0].intensity).toBe(0);
+    });
+  });
+
+  describe('buildPlayerRadarMetrics', () => {
+    it('calculates 5 dimensions bounded between 0 and 100', () => {
+      const metrics = buildPlayerRadarMetrics({
+        overview: {
+          totalActivities: 10,
+          completedActivities: 8,
+          completionRate: 80,
+          currentStreak: 5,
+          longestStreak: 7,
+        },
+        priorityBreakdown: [
+          { priority: 'CRITICAL', total: 2, completed: 2 },
+          { priority: 'HIGH', total: 4, completed: 3 },
+        ],
+        recurrenceVsSingle: {
+          single: { totalCreated: 4, totalExecutions: 3, xpEarned: 200 },
+          recurring: { totalCreated: 3, totalExecutions: 6, xpEarned: 300 },
+        },
+        projectsProgress: [
+          {
+            id: 'p1',
+            name: 'Team Ploty',
+            colorHex: '#7477FF',
+            icon: '🚀',
+            isTeamProject: true,
+            totalActivities: 5,
+            completedActivities: 4,
+            progressPercent: 80,
+          },
+        ],
+      });
+
+      expect(metrics).toHaveLength(5);
+      expect(metrics.map((m) => m.dimension)).toEqual([
+        'Constancia',
+        'Tareas Críticas',
+        'Hábitos',
+        'Colaboración',
+        'Eficiencia',
+      ]);
+      metrics.forEach((m) => {
+        expect(m.score).toBeGreaterThanOrEqual(0);
+        expect(m.score).toBeLessThanOrEqual(100);
+      });
+    });
+  });
+
+  describe('serializeReportToCsv', () => {
+    it('serializes projects and actions cleanly with RFC-4180 escaping', () => {
+      const csv = serializeReportToCsv({
+        scope: 'GLOBAL',
+        projects: [
+          {
+            id: 'p1',
+            name: 'Ploty, "Core"',
+            colorHex: '#7477FF',
+            icon: '🚀',
+            isTeamProject: true,
+            totalActivities: 4,
+            completedActivities: 3,
+            progressPercent: 75,
+          },
+        ],
+        actions: [
+          {
+            id: 'a1',
+            title: 'Katas FP, Nivel 1',
+            type: 'RECURRING',
+            priority: 'HIGH',
+            status: 'PENDING',
+            progressPercent: 80,
+            totalExecutions: 5,
+            xpGenerated: 375,
+            coinsGenerated: 125,
+          },
+        ],
+      });
+
+      expect(csv.startsWith('\uFEFF')).toBe(true);
+      expect(csv).toContain('"Ploty, ""Core"""');
+      expect(csv).toContain('"Katas FP, Nivel 1"');
+      expect(csv).toContain('Hábito Recurrente');
     });
   });
 });

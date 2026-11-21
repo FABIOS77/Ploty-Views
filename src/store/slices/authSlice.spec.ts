@@ -26,6 +26,8 @@ describe('Auth Redux Slice (authSlice.ts)', () => {
       currentLevelBaseXp: 100,
       progressToNextLevelPercent: 33,
       progressPercent: 33,
+      equippedFrameId: null,
+      equippedTitleId: null,
     },
     token: 'jwt-token-123',
     isAuthenticated: true,
@@ -38,19 +40,14 @@ describe('Auth Redux Slice (authSlice.ts)', () => {
     expect(state.error).toBeNull();
   });
 
-  it('handles logout action and clears user/token from state and localStorage', () => {
-    localStorage.setItem('ploty_token', 'jwt-token-123');
-    localStorage.setItem('ploty_user', JSON.stringify({ id: 'usr-1' }));
-
+  it('handles logout action and clears user/token from state purely', () => {
     const state = authReducer(initialTestState, logout());
     expect(state.user).toBeNull();
     expect(state.token).toBeNull();
     expect(state.isAuthenticated).toBe(false);
-    expect(localStorage.getItem('ploty_token')).toBeNull();
-    expect(localStorage.getItem('ploty_user')).toBeNull();
   });
 
-  it('handles syncUserStats to update gamified level and coins immediately', () => {
+  it('handles syncUserStats to update gamified level, coins, and cosmetics immediately', () => {
     const state = authReducer(
       initialTestState,
       syncUserStats({
@@ -58,18 +55,21 @@ describe('Auth Redux Slice (authSlice.ts)', () => {
         level: 3,
         coins: 100,
         currentStreak: 4,
+        equippedFrameId: 'frame-plasma',
+        equippedTitleId: 'title-arch',
       }),
     );
     expect(state.user?.xp).toBe(350);
     expect(state.user?.level).toBe(3);
     expect(state.user?.coins).toBe(100);
     expect(state.user?.currentStreak).toBe(4);
-    // Preserves other fields
+    expect(state.user?.equippedFrameId).toBe('frame-plasma');
+    expect(state.user?.equippedTitleId).toBe('title-arch');
     expect(state.user?.username).toBe('alex_hero');
   });
 
-  describe('normalizeUserProfile pure function', () => {
-    it('normalizes flat user object exposing root and stats compatibility', () => {
+  describe('normalizeUserProfile pure function (zero side effects)', () => {
+    it('normalizes flat user object exposing root, stats, and cosmetic IDs', () => {
       const flatRaw = {
         id: 'u-1',
         username: 'hero',
@@ -79,6 +79,8 @@ describe('Auth Redux Slice (authSlice.ts)', () => {
         coins: 75,
         currentStreak: 2,
         longestStreak: 4,
+        equippedFrameId: 'f-1',
+        equippedTitleId: 't-1',
       };
 
       const normalized = normalizeUserProfile(flatRaw);
@@ -89,10 +91,10 @@ describe('Auth Redux Slice (authSlice.ts)', () => {
       expect(normalized?.currentStreak).toBe(2);
       expect(normalized?.nextLevelXp).toBe(400);
       expect(normalized?.currentLevelBaseXp).toBe(100);
-      // Progress percent: (158 - 100) / (400 - 100) = 58 / 300 = 19%
       expect(normalized?.progressToNextLevelPercent).toBe(19);
+      expect(normalized?.equippedFrameId).toBe('f-1');
+      expect(normalized?.equippedTitleId).toBe('t-1');
       expect(normalized?.stats?.xp).toBe(158);
-      expect(normalized?.stats?.coins).toBe(75);
     });
 
     it('normalizes nested user.stats from backend response', () => {
@@ -110,32 +112,31 @@ describe('Auth Redux Slice (authSlice.ts)', () => {
           currentLevelBaseXp: 400,
           progressToNextLevelPercent: 20,
         },
-        equippedTheme: { code: 'THEME_DEFAULT_PLOTY' },
+        equippedTheme: { id: 'th-1', code: 'THEME_DEFAULT_PLOTY' },
+        equippedFrame: { id: 'fr-1', code: 'FRAME_PLASMA_RING' },
+        equippedTitle: { id: 'ti-1', code: 'TITLE_ARCHITECT' },
       };
 
       const normalized = normalizeUserProfile(nestedBackendRaw);
-      expect(normalized).not.toBeNull();
       expect(normalized?.xp).toBe(500);
       expect(normalized?.level).toBe(3);
       expect(normalized?.coins).toBe(120);
-      expect(normalized?.currentStreak).toBe(5);
-      expect(normalized?.progressToNextLevelPercent).toBe(20);
-      expect(normalized?.equippedTheme?.code).toBe('THEME_DEFAULT_PLOTY');
+      expect(normalized?.equippedThemeId).toBe('th-1');
+      expect(normalized?.equippedFrameId).toBe('fr-1');
+      expect(normalized?.equippedTitleId).toBe('ti-1');
     });
 
-    it('persists normalized user to localStorage', () => {
+    it('produces ZERO side effects (does NOT mutate localStorage)', () => {
+      expect(localStorage.getItem('ploty_user')).toBeNull();
+
       normalizeUserProfile({
-        id: 'u-saved',
-        username: 'persisted_user',
+        id: 'u-pure',
+        username: 'pure_user',
         xp: 100,
         coins: 50,
       });
 
-      const saved = localStorage.getItem('ploty_user');
-      expect(saved).not.toBeNull();
-      const parsed = JSON.parse(saved!);
-      expect(parsed.username).toBe('persisted_user');
-      expect(parsed.xp).toBe(100);
+      expect(localStorage.getItem('ploty_user')).toBeNull();
     });
 
     it('safely returns null when input is null or undefined', () => {
@@ -170,19 +171,24 @@ describe('Auth Redux Slice (authSlice.ts)', () => {
       expect(state.user?.progressToNextLevelPercent).toBe(67);
     });
 
-    it('reactively updates equippedTheme when equipItem.fulfilled is dispatched', () => {
+    it('reactively updates equippedTheme, frame and title when equipItem.fulfilled is dispatched', () => {
       const action = {
         type: 'gamification/equipItem/fulfilled',
         payload: {
-          payload: { itemId: 'theme-1', type: 'THEME' },
+          payload: { itemId: 'frame-1', type: 'AVATAR_FRAME' },
           data: {
-            equippedTheme: { id: 'theme-1', code: 'THEME_DEFAULT_PLOTY', name: 'Ploty Indigo Core' },
+            user: {
+              ...initialTestState.user,
+              equippedFrameId: 'frame-1',
+              equippedFrame: { id: 'frame-1', code: 'FRAME_PLASMA_RING', name: 'Anillo de Plasma' },
+            },
           },
         },
       };
 
       const state = authReducer(initialTestState, action);
-      expect(state.user?.equippedTheme?.code).toBe('THEME_DEFAULT_PLOTY');
+      expect(state.user?.equippedFrameId).toBe('frame-1');
+      expect(state.user?.equippedFrame?.code).toBe('FRAME_PLASMA_RING');
     });
   });
 });

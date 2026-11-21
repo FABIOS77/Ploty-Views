@@ -6,7 +6,7 @@ export interface CatalogItem {
   code: string;
   name: string;
   description: string;
-  type: 'THEME' | 'MEDAL' | 'TITLE' | 'AVATAR_FRAME' | 'BADGE';
+  type: 'THEME' | 'MEDAL' | 'TITLE' | 'AVATAR_FRAME' | 'FRAME' | 'BADGE';
   unlockLevel: number;
   costCoins: number;
   metadata?: any;
@@ -94,22 +94,23 @@ export const buyItem = createAsyncThunk(
 export const equipItem = createAsyncThunk(
   'gamification/equipItem',
   async (
-    payload: { itemId: string; type: 'THEME' | 'MEDAL' | 'AVATAR_FRAME' | 'TITLE' },
+    payload: {
+      itemId: string;
+      type: 'THEME' | 'MEDAL' | 'AVATAR_FRAME' | 'FRAME' | 'TITLE';
+    },
     { rejectWithValue },
   ) => {
     try {
       const body: Record<string, string> = {};
       if (payload.type === 'THEME') body.themeId = payload.itemId;
       if (payload.type === 'MEDAL') body.medalId = payload.itemId;
-
-      let responseData: any = {};
-      // If equipping theme or medal, persist to backend
-      if (payload.type === 'THEME' || payload.type === 'MEDAL') {
-        const response = await api.patch('/gamification/equip', body);
-        responseData = response.data;
+      if (payload.type === 'AVATAR_FRAME' || payload.type === 'FRAME') {
+        body.frameId = payload.itemId;
       }
+      if (payload.type === 'TITLE') body.titleId = payload.itemId;
 
-      return { payload, data: responseData };
+      const response = await api.patch('/gamification/equip', body);
+      return { payload, data: response.data };
     } catch (err: any) {
       const msg = err.response?.data?.message || 'Failed to equip item';
       return rejectWithValue(Array.isArray(msg) ? msg[0] : msg);
@@ -187,7 +188,7 @@ export const gamificationSlice = createSlice({
     builder.addCase(fetchCatalog.fulfilled, (state, action) => {
       state.loading = false;
       state.catalog = action.payload;
-      // sync equippedTheme / medal
+      // sync all 4 equipped cosmetic slots
       const equippedTh = action.payload.find(
         (i: CatalogItem) => i.type === 'THEME' && i.isEquipped,
       );
@@ -196,6 +197,15 @@ export const gamificationSlice = createSlice({
         (i: CatalogItem) => i.type === 'MEDAL' && i.isEquipped,
       );
       if (equippedMed) state.equippedMedal = equippedMed;
+      const equippedFr = action.payload.find(
+        (i: CatalogItem) =>
+          (i.type === 'AVATAR_FRAME' || i.type === 'FRAME') && i.isEquipped,
+      );
+      if (equippedFr) state.equippedFrame = equippedFr;
+      const equippedTi = action.payload.find(
+        (i: CatalogItem) => i.type === 'TITLE' && i.isEquipped,
+      );
+      if (equippedTi) state.equippedTitle = equippedTi;
     });
     builder.addCase(fetchCatalog.rejected, (state, action) => {
       state.loading = false;
@@ -222,13 +232,14 @@ export const gamificationSlice = createSlice({
     builder.addCase(equipItem.fulfilled, (state, action) => {
       const { itemId, type } = action.payload.payload;
       const item = state.catalog.find((i) => i.id === itemId);
+      const isFrameSlot = type === 'AVATAR_FRAME' || type === 'FRAME';
       if (item) {
         if (type === 'THEME') {
           state.equippedTheme = item;
-          state.previewTheme = null; // clear preview if equipped
+          state.previewTheme = null;
         } else if (type === 'MEDAL') {
           state.equippedMedal = item;
-        } else if (type === 'AVATAR_FRAME') {
+        } else if (isFrameSlot) {
           state.equippedFrame = item;
         } else if (type === 'TITLE') {
           state.equippedTitle = item;
@@ -236,7 +247,10 @@ export const gamificationSlice = createSlice({
       }
       // Update catalog flags
       state.catalog = state.catalog.map((i) => {
-        if (i.type === type) {
+        const sameSlot = isFrameSlot
+          ? i.type === 'AVATAR_FRAME' || i.type === 'FRAME'
+          : i.type === type;
+        if (sameSlot) {
           return { ...i, isEquipped: i.id === itemId };
         }
         return i;

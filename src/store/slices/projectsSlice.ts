@@ -16,8 +16,11 @@ export interface ProjectMember {
 
 export interface ProjectSummary {
   total: number;
+  totalCount?: number;
   completed: number;
   pending: number;
+  inProgress?: number;
+  overdue?: number;
   progressPercent: number;
 }
 
@@ -27,10 +30,14 @@ export interface ProjectItem {
   description?: string | null;
   colorHex: string;
   icon: string;
-  creatorId: string;
+  isTeamProject?: boolean;
+  ownerId?: string;
+  creatorId?: string;
+  memberCount?: number;
   createdAt: string;
   updatedAt: string;
   members?: ProjectMember[];
+  progressSummary?: ProjectSummary;
   summary?: ProjectSummary;
   _count?: {
     members: number;
@@ -92,7 +99,13 @@ export const fetchProjectById = createAsyncThunk(
 export const createProject = createAsyncThunk(
   'projects/createProject',
   async (
-    payload: { name: string; description?: string; colorHex?: string; icon?: string },
+    payload: {
+      name: string;
+      description?: string;
+      colorHex?: string;
+      icon?: string;
+      isTeamProject?: boolean;
+    },
     { rejectWithValue },
   ) => {
     try {
@@ -100,6 +113,44 @@ export const createProject = createAsyncThunk(
       return response.data;
     } catch (err: any) {
       const msg = err.response?.data?.message || 'Failed to create project';
+      return rejectWithValue(Array.isArray(msg) ? msg[0] : msg);
+    }
+  },
+);
+
+export const updateProject = createAsyncThunk(
+  'projects/updateProject',
+  async (
+    payload: {
+      id: string;
+      data: {
+        name?: string;
+        description?: string;
+        colorHex?: string;
+        icon?: string;
+        isTeamProject?: boolean;
+      };
+    },
+    { rejectWithValue },
+  ) => {
+    try {
+      const response = await api.patch(`/projects/${payload.id}`, payload.data);
+      return response.data;
+    } catch (err: any) {
+      const msg = err.response?.data?.message || 'Failed to update project';
+      return rejectWithValue(Array.isArray(msg) ? msg[0] : msg);
+    }
+  },
+);
+
+export const deleteProject = createAsyncThunk(
+  'projects/deleteProject',
+  async (projectId: string, { rejectWithValue }) => {
+    try {
+      await api.delete(`/projects/${projectId}`);
+      return projectId;
+    } catch (err: any) {
+      const msg = err.response?.data?.message || 'Failed to delete project';
       return rejectWithValue(Array.isArray(msg) ? msg[0] : msg);
     }
   },
@@ -191,6 +242,31 @@ export const projectsSlice = createSlice({
     builder.addCase(createProject.fulfilled, (state, action) => {
       state.projects.unshift(action.payload);
       state.selectedProject = action.payload;
+    });
+
+    // updateProject
+    builder.addCase(updateProject.fulfilled, (state, action) => {
+      const idx = state.projects.findIndex((p) => p.id === action.payload.id);
+      if (idx !== -1) {
+        state.projects[idx] = action.payload;
+      }
+      if (state.selectedProject?.id === action.payload.id) {
+        state.selectedProject = action.payload;
+      }
+    });
+    builder.addCase(updateProject.rejected, (state, action) => {
+      state.error = action.payload as string;
+    });
+
+    // deleteProject
+    builder.addCase(deleteProject.fulfilled, (state, action) => {
+      state.projects = state.projects.filter((p) => p.id !== action.payload);
+      if (state.selectedProject?.id === action.payload) {
+        state.selectedProject = null;
+      }
+    });
+    builder.addCase(deleteProject.rejected, (state, action) => {
+      state.error = action.payload as string;
     });
 
     // searchUsers
