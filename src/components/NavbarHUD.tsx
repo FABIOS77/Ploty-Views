@@ -1,6 +1,7 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { Flame, Coins, Shield, Sparkles, LogOut, User as UserIcon } from 'lucide-react';
+import { Flame, Coins, Shield, Sparkles, LogOut } from 'lucide-react';
 import { useAppDispatch, useAppSelector } from '../store/hooks';
 import { logout } from '../store/slices/authSlice';
 import { springConfig } from '../common/motion/motion-skills';
@@ -8,9 +9,14 @@ import { springConfig } from '../common/motion/motion-skills';
 export const NavbarHUD: React.FC = () => {
   const dispatch = useAppDispatch();
   const { user } = useAppSelector((state) => state.auth);
-  const { equippedFrame, equippedTitle, equippedMedal } = useAppSelector(
+  const { catalog, equippedFrame, equippedTitle, equippedMedal } = useAppSelector(
     (state) => state.gamification,
   );
+  const [avatarBroken, setAvatarBroken] = useState(false);
+
+  useEffect(() => {
+    setAvatarBroken(false);
+  }, [user?.avatarUrl]);
 
   if (!user) return null;
 
@@ -26,16 +32,48 @@ export const NavbarHUD: React.FC = () => {
     (user.nextLevelXp && user.nextLevelXp > (user.currentLevelBaseXp ?? 0)
       ? Math.round(
           Math.min(
-            Math.max((xp - (user.currentLevelBaseXp ?? 0)) / (user.nextLevelXp - (user.currentLevelBaseXp ?? 0)), 0),
+            Math.max(
+              (xp - (user.currentLevelBaseXp ?? 0)) /
+                (user.nextLevelXp - (user.currentLevelBaseXp ?? 0)),
+              0,
+            ),
             1,
           ) * 100,
         )
       : 0);
 
-  // Determine active frame, title and medal (prefer user profile synced from backend, fallback gamificationSlice)
-  const activeFrame = user.equippedFrame || equippedFrame;
-  const activeTitle = user.equippedTitle || equippedTitle;
-  const activeMedal = user.equippedMedal || equippedMedal;
+  // Determine active frame, title and medal (prefer user profile synced from backend, fallback gamificationSlice or catalog lookup by ID)
+  const activeFrame =
+    user.equippedFrame ||
+    equippedFrame ||
+    (user.equippedFrameId
+      ? catalog.find((i) => i.id === user.equippedFrameId) || {
+          id: user.equippedFrameId,
+          code: 'EQUIPPED_FRAME',
+          name: 'Marco Equipado',
+        }
+      : null);
+
+  const activeTitle =
+    user.equippedTitle ||
+    equippedTitle ||
+    (user.equippedTitleId
+      ? catalog.find((i) => i.id === user.equippedTitleId) || null
+      : null);
+
+  const activeMedal =
+    user.equippedMedal ||
+    equippedMedal ||
+    (user.equippedMedalId
+      ? catalog.find((i) => i.id === user.equippedMedalId) || null
+      : null);
+
+  const userInitials = (user.username || 'PL')
+    .trim()
+    .slice(0, 2)
+    .toUpperCase();
+
+  const showAvatarImage = Boolean(user.avatarUrl) && !avatarBroken;
 
   return (
     <header className="sticky top-0 z-40 w-full px-4 sm:px-6 py-2.5 bg-[#1E1F28] text-white border-b-2 border-[#12131A] shadow-[0_4px_16px_rgba(0,0,0,0.3)] transition-colors">
@@ -117,7 +155,7 @@ export const NavbarHUD: React.FC = () => {
             <motion.div
               whileHover={{ scale: 1.05 }}
               transition={springConfig.tactile}
-              className="hidden lg:flex items-center gap-1.5 bg-[#252538] border-2 border-[#7477FF]/60 px-3.5 py-1.5 rounded-2xl text-[#B4B6FF] shadow-sm font-black"
+              className="flex items-center gap-1.5 bg-[#252538] border-2 border-[#7477FF]/60 px-3 py-1.5 rounded-2xl text-[#B4B6FF] shadow-sm font-black"
               title={`Medalla Equipada: ${activeMedal.name}`}
             >
               <Shield className="w-4 h-4 fill-[#7477FF] text-[#7477FF] shrink-0" />
@@ -128,45 +166,65 @@ export const NavbarHUD: React.FC = () => {
           )}
         </div>
 
-        {/* User Profile Pill with Avatar Frame & Title */}
+        {/* User Profile Pill with Avatar Frame & Title (Always Visible on Mobile & Desktop) */}
         <div className="flex items-center gap-2 sm:gap-3">
-          <div className="flex items-center gap-2.5 bg-[#2A2B37] px-3 sm:px-3.5 py-1.5 rounded-2xl border-2 border-[#3F4257] shadow-sm text-white">
-            {/* Avatar with optional animated Avatar Frame */}
-            <div className="relative shrink-0">
+          <Link
+            to="/profile"
+            title="Ver mi perfil"
+            aria-label="Ver mi perfil"
+            className="group flex items-center gap-2.5 bg-[#2A2B37] hover:bg-[#333545] px-3 sm:px-3.5 py-1.5 rounded-2xl border-2 border-[#3F4257] hover:border-[#7477FF] shadow-sm text-white transition-all cursor-pointer overflow-visible"
+          >
+            {/* Avatar with optional animated Avatar Frame (overflow-visible prevents frame clipping) */}
+            <div className="relative shrink-0 overflow-visible">
               {activeFrame ? (
-                <div className="p-0.5 rounded-full bg-gradient-to-tr from-[#7477FF] via-[#F66554] to-[#F9CD61] shadow-sm animate-pulse">
-                  {user.avatarUrl ? (
+                <div
+                  className="p-0.5 rounded-full bg-gradient-to-tr from-[#7477FF] via-[#F66554] to-[#F9CD61] shadow-[0_0_10px_rgba(116,119,255,0.55)] ring-2 ring-[#F9CD61]/60"
+                  title={`Marco equipado: ${activeFrame.name}`}
+                >
+                  {showAvatarImage ? (
                     <img
-                      src={user.avatarUrl}
+                      src={user.avatarUrl!}
                       alt={user.username}
-                      className="w-8 h-8 rounded-full object-cover"
+                      onError={() => setAvatarBroken(true)}
+                      className="w-8 h-8 rounded-full object-cover block"
                     />
                   ) : (
-                    <div className="w-8 h-8 rounded-full bg-[#7477FF] flex items-center justify-center text-white font-black text-xs">
-                      <UserIcon className="w-4 h-4" />
+                    <div className="w-8 h-8 rounded-full bg-[#7477FF] flex items-center justify-center text-white font-black text-xs select-none">
+                      {userInitials}
                     </div>
                   )}
                 </div>
-              ) : user.avatarUrl ? (
+              ) : showAvatarImage ? (
                 <img
-                  src={user.avatarUrl}
+                  src={user.avatarUrl!}
                   alt={user.username}
-                  className="w-8 h-8 rounded-full object-cover border-2 border-[#7477FF]"
+                  onError={() => setAvatarBroken(true)}
+                  className="w-8 h-8 rounded-full object-cover border-2 border-[#7477FF] block"
                 />
               ) : (
-                <div className="w-8 h-8 rounded-full bg-[#7477FF]/40 border-2 border-[#7477FF] flex items-center justify-center text-white font-black text-xs">
-                  <UserIcon className="w-4 h-4" />
+                <div className="w-8 h-8 rounded-full bg-[#7477FF]/40 border-2 border-[#7477FF] flex items-center justify-center text-white font-black text-xs select-none">
+                  {userInitials}
                 </div>
               )}
             </div>
 
-            {/* Username & Equipped Title */}
-            <div className="hidden md:flex flex-col text-left justify-center">
-              <span className="font-black text-xs text-white leading-none">
-                {user.username}
-              </span>
+            {/* Username, Equipped Title & Medal indicator - Always Visible */}
+            <div className="flex flex-col text-left justify-center min-w-0">
+              <div className="flex items-center gap-1.5">
+                <span className="font-black text-xs text-white leading-none truncate max-w-[110px] sm:max-w-[150px] group-hover:text-[#B4B6FF] transition-colors">
+                  {user.username}
+                </span>
+                {activeMedal && (
+                  <span
+                    className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-md bg-[#7477FF]/30 border border-[#7477FF]/60 text-[9px] font-black text-[#B4B6FF] leading-none"
+                    title={`Medalla: ${activeMedal.name}`}
+                  >
+                    <Shield className="w-2.5 h-2.5 fill-[#7477FF] text-[#7477FF]" />
+                  </span>
+                )}
+              </div>
               {activeTitle ? (
-                <span className="text-[10px] font-black uppercase tracking-wider text-[#F9CD61] leading-none mt-1">
+                <span className="text-[10px] font-black uppercase tracking-wider text-[#F9CD61] leading-none mt-1 truncate max-w-[120px] sm:max-w-[160px]">
                   {activeTitle.name}
                 </span>
               ) : (
@@ -175,7 +233,7 @@ export const NavbarHUD: React.FC = () => {
                 </span>
               )}
             </div>
-          </div>
+          </Link>
 
           <motion.button
             whileHover={{ scale: 1.08 }}

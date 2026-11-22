@@ -9,6 +9,7 @@ import { ActivitiesPage } from './pages/activities/ActivitiesPage';
 import { ProjectsPage } from './pages/projects/ProjectsPage';
 import { ShopPage } from './pages/shop/ShopPage';
 import { ReportsPage } from './pages/reports/ReportsPage';
+import { ProfilePage } from './pages/profile/ProfilePage';
 
 export const App: React.FC = () => {
   return (
@@ -26,6 +27,7 @@ export const App: React.FC = () => {
             <Route path="projects" element={<ProjectsPage />} />
             <Route path="shop" element={<ShopPage />} />
             <Route path="reports" element={<ReportsPage />} />
+            <Route path="profile" element={<ProfilePage />} />
           </Route>
 
           {/* Fallback route */}

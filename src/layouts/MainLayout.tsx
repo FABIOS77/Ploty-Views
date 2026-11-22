@@ -6,27 +6,32 @@ import { RewardToastManager } from '../components/RewardToastManager';
 import { LevelUpAndUnlockModal } from '../components/LevelUpAndUnlockModal';
 import { useAppDispatch, useAppSelector } from '../store/hooks';
 import { fetchUserProfile } from '../store/slices/authSlice';
-import { clearPreviewTheme } from '../store/slices/gamificationSlice';
+import { clearPreviewTheme, fetchCatalog } from '../store/slices/gamificationSlice';
 import { resolveThemeTokens, applyThemeToDocument } from '../common/fp/theme-resolver.fp';
 import { Eye, RotateCcw } from 'lucide-react';
 
 export const MainLayout: React.FC = () => {
   const dispatch = useAppDispatch();
   const { token, user, isAuthenticated } = useAppSelector((state) => state.auth);
-  const previewTheme = useAppSelector((state) => state.gamification.previewTheme);
+  const { previewTheme, equippedTheme, catalog } = useAppSelector(
+    (state) => state.gamification,
+  );
 
   useEffect(() => {
     if (token) {
       dispatch(fetchUserProfile());
+      if (catalog.length === 0) {
+        dispatch(fetchCatalog());
+      }
     }
-  }, [token, dispatch]);
+  }, [token, dispatch, catalog.length]);
 
   // Apply active or preview theme tokens to document root
   useEffect(() => {
-    const activeItem = previewTheme || user?.equippedTheme;
+    const activeItem = previewTheme || equippedTheme || user?.equippedTheme;
     const tokens = resolveThemeTokens(activeItem);
     applyThemeToDocument(tokens);
-  }, [user?.equippedTheme, previewTheme]);
+  }, [user?.equippedTheme, equippedTheme, previewTheme]);
 
   if (!isAuthenticated && !token) {
     return <Navigate to="/login" replace />;

@@ -7,6 +7,7 @@ import {
   Award,
   BarChart3,
   Layers,
+  User,
 } from 'lucide-react';
 import { springConfig } from '../common/motion/motion-skills';
 
@@ -21,6 +22,7 @@ const navItems: NavItem[] = [
   { to: '/activities', label: 'Actividades', icon: CheckSquare },
   { to: '/shop', label: 'Recompensas', icon: Award },
   { to: '/reports', label: 'Métricas', icon: BarChart3 },
+  { to: '/profile', label: 'Mi Perfil', icon: User },
 ];
 
 export const Sidebar: React.FC = () => {

@@ -4,6 +4,7 @@ import {
   evaluatePasswordStrength,
   validateActivityForm,
   validateLoginForm,
+  validateProfileForm,
   validateProjectForm,
   validateRegisterForm,
 } from './form-validators.fp';
@@ -137,6 +138,54 @@ describe('Pure Functional Form Validators (form-validators.fp.ts)', () => {
       if (isErr(res)) {
         expect(res.error.name).toBeDefined();
         expect(res.error.description).toBeDefined();
+      }
+    });
+  });
+
+  describe('validateProfileForm', () => {
+    it('accepts valid username and valid https avatarUrl', () => {
+      const res = validateProfileForm({
+        username: '  fabio_hero_99 ',
+        avatarUrl: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb',
+      });
+      expect(isOk(res)).toBe(true);
+      if (isOk(res)) {
+        expect(res.value.username).toBe('fabio_hero_99');
+        expect(res.value.avatarUrl).toBe(
+          'https://images.unsplash.com/photo-1534528741775-53994a69daeb',
+        );
+      }
+    });
+
+    it('normalizes empty or null avatarUrl to null', () => {
+      const resEmpty = validateProfileForm({
+        username: 'ploty_player',
+        avatarUrl: '   ',
+      });
+      expect(isOk(resEmpty)).toBe(true);
+      if (isOk(resEmpty)) {
+        expect(resEmpty.value.avatarUrl).toBeNull();
+      }
+
+      const resNull = validateProfileForm({
+        username: 'ploty_player',
+        avatarUrl: null,
+      });
+      expect(isOk(resNull)).toBe(true);
+      if (isOk(resNull)) {
+        expect(resNull.value.avatarUrl).toBeNull();
+      }
+    });
+
+    it('rejects invalid username and non-https avatarUrl', () => {
+      const res = validateProfileForm({
+        username: 'ab',
+        avatarUrl: 'http://insecure.com/avatar.png',
+      });
+      expect(isErr(res)).toBe(true);
+      if (isErr(res)) {
+        expect(res.error.username).toBeDefined();
+        expect(res.error.avatarUrl).toBeDefined();
       }
     });
   });

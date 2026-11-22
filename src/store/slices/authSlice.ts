@@ -214,6 +214,27 @@ export const fetchUserProfile = createAsyncThunk(
   },
 );
 
+export const updateProfile = createAsyncThunk(
+  'auth/updateProfile',
+  async (
+    payload: { username?: string; avatarUrl?: string | null },
+    { dispatch, rejectWithValue },
+  ) => {
+    try {
+      const response = await api.patch('/users/me', payload);
+      const normalized = normalizeUserProfile(response.data);
+      if (normalized) {
+        dispatch(authSlice.actions.syncUserStats(normalized));
+      }
+      return normalized;
+    } catch (err: any) {
+      const msg =
+        err.response?.data?.message || 'No se pudo actualizar el perfil';
+      return rejectWithValue(Array.isArray(msg) ? msg[0] : msg);
+    }
+  },
+);
+
 export const authSlice = createSlice({
   name: 'auth',
   initialState,
@@ -305,6 +326,25 @@ export const authSlice = createSlice({
         state.token = null;
         state.user = null;
       }
+    });
+
+    // Update Profile (PATCH /users/me)
+    builder.addCase(updateProfile.pending, (state) => {
+      state.loading = true;
+      state.error = null;
+    });
+    builder.addCase(updateProfile.fulfilled, (state, action) => {
+      state.loading = false;
+      state.error = null;
+      state.user = normalizeUserProfile(
+        action.payload
+          ? { ...(state.user || {}), ...action.payload }
+          : state.user,
+      );
+    });
+    builder.addCase(updateProfile.rejected, (state, action) => {
+      state.loading = false;
+      state.error = action.payload as string;
     });
 
     // Reactive HUD update when an activity completes

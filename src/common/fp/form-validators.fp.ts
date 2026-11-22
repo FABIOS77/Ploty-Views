@@ -265,3 +265,47 @@ export const validateProjectForm = (
     }),
   );
 };
+
+export interface ProfileFormInput {
+  readonly username: string;
+  readonly avatarUrl?: string | null;
+}
+
+export interface ValidatedProfileForm {
+  readonly username: string;
+  readonly avatarUrl: string | null;
+}
+
+export const validateProfileForm = (
+  input: ProfileFormInput,
+): Result<Readonly<ValidatedProfileForm>, FieldErrors> => {
+  const username = (input.username ?? '').trim();
+  const rawAvatar = input.avatarUrl === null || input.avatarUrl === undefined
+    ? ''
+    : String(input.avatarUrl).trim();
+
+  const errors: Record<string, string> = {
+    ...(!username
+      ? { username: 'El nombre de usuario es obligatorio' }
+      : !USERNAME_REGEX.test(username)
+        ? {
+            username:
+              'Usa entre 3 y 30 caracteres (solo letras, números y guión bajo, sin espacios)',
+          }
+        : {}),
+    ...(rawAvatar.length > 0 && !isValidHttpsUrl(rawAvatar)
+      ? { avatarUrl: 'La URL del avatar debe ser válida y usar protocolo https://' }
+      : {}),
+  };
+
+  if (Object.keys(errors).length > 0) {
+    return err(Object.freeze(errors));
+  }
+
+  return ok(
+    Object.freeze({
+      username,
+      avatarUrl: rawAvatar.length > 0 ? rawAvatar : null,
+    }),
+  );
+};

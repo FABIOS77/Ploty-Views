@@ -3,6 +3,7 @@ import authReducer, {
   logout,
   clearAuthError,
   syncUserStats,
+  updateProfile,
   normalizeUserProfile,
   type AuthState,
 } from './authSlice';
@@ -189,6 +190,28 @@ describe('Auth Redux Slice (authSlice.ts)', () => {
       const state = authReducer(initialTestState, action);
       expect(state.user?.equippedFrameId).toBe('frame-1');
       expect(state.user?.equippedFrame?.code).toBe('FRAME_PLASMA_RING');
+    });
+
+    it('handles updateProfile.fulfilled by normalizing and updating username and avatarUrl purely', () => {
+      const updatedRaw = normalizeUserProfile({
+        ...initialTestState.user,
+        username: 'alex_master',
+        avatarUrl: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb',
+      });
+
+      const action = {
+        type: updateProfile.fulfilled.type,
+        payload: updatedRaw,
+      };
+
+      const state = authReducer(initialTestState, action);
+      expect(state.loading).toBe(false);
+      expect(state.error).toBeNull();
+      expect(state.user?.username).toBe('alex_master');
+      expect(state.user?.avatarUrl).toBe(
+        'https://images.unsplash.com/photo-1534528741775-53994a69daeb',
+      );
+      expect(localStorage.getItem('ploty_user')).toBeNull();
     });
   });
 });
